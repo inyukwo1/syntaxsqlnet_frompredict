@@ -57,7 +57,7 @@ if __name__ == '__main__':
     # agg_m, sel_m, cond_m = best_model_name(args)
     # torch.save(model.state_dict(), "saved_models/{}_models.dump".format(args.train_component))
 
-    print "Loading from modules..."
+    print("Loading from modules...")
     model.multi_sql.load_state_dict(torch.load("{}/multi_sql_models.dump".format(args.models)))
     model.key_word.load_state_dict(torch.load("{}/keyword_models.dump".format(args.models)))
     model.col.load_state_dict(torch.load("{}/col_models.dump".format(args.models)))

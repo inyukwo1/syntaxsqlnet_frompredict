@@ -91,7 +91,7 @@ class Pattern:
         reference_id_to_original_id = json_data['Column Identity']
         self.column_identity = {}
 
-        for reference, original in reference_id_to_original_id.items():
+        for reference, original in list(reference_id_to_original_id.items()):
             rid = int(reference)
             oid = int(original)
 
@@ -99,7 +99,7 @@ class Pattern:
 
         raw_column_attributes = json_data['Column Attributes']
         sorted_column_attributes = sorted(
-            [(int(column_id), attributes) for column_id, attributes in raw_column_attributes.items()])
+            [(int(column_id), attributes) for column_id, attributes in list(raw_column_attributes.items())])
 
         self.column_id_to_column_placeholders = {}
         self.column_placeholders = []
@@ -347,7 +347,7 @@ class Schema:
             frontier = []
             visited_tables = set()
             found_path = None
-            for table in self.table_to_tn.keys():
+            for table in list(self.table_to_tn.keys()):
                 visited_tables.add(table)
                 for from_column, to_column, to_table in table.get_foreign_keys():
                     frontier.append((table, from_column, to_column, to_table, []))
@@ -365,7 +365,7 @@ class Schema:
             if found_path is None:
                 # if a path is not found
                 raise Exception(
-                    "A path could not be found from the current join {} to table {}".format(self.table_to_tn.keys(),
+                    "A path could not be found from the current join {} to table {}".format(list(self.table_to_tn.keys()),
                                                                                             table))
 
             for from_table, from_column, to_column, to_table in found_path:
@@ -425,7 +425,7 @@ def generate_every_db(db):
             schema = Schema(db)
         except:
             traceback.print_exc()
-            print("skip db {}".format(db_name))
+            print(("skip db {}".format(db_name)))
             return
         f = open("data_augment/{}.txt".format(db_name),"w")
 
@@ -465,6 +465,6 @@ if __name__ == "__main__":
     count = 0
     for db in dbs[:]:
         if count % 1000 == 0:
-            print("processed {} files...".format(float(count)/len(dbs)))
+            print(("processed {} files...".format(float(count)/len(dbs))))
         generate_every_db(db)
         count += 1

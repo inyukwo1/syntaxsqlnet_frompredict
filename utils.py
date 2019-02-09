@@ -168,7 +168,7 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
     total_number_error = 0.0
     total_p_error = 0.0
     total_error = 0.0
-    print("dev data size {}".format(len(data)))
+    print(("dev data size {}".format(len(data))))
     while st < len(data):
         ed = st+batch_size if st+batch_size < len(perm) else len(perm)
 
@@ -277,10 +277,10 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         st = ed
 
     if component in ("agg","col","keyword","op"):
-        print("Dev {} acc number predict acc:{} partial acc: {} total acc: {}".format(component,1 - total_number_error*1.0/len(data),1 - total_p_error*1.0/len(data),  1 - total_error*1.0/len(data)))
+        print(("Dev {} acc number predict acc:{} partial acc: {} total acc: {}".format(component,1 - total_number_error*1.0/len(data),1 - total_p_error*1.0/len(data),  1 - total_error*1.0/len(data))))
         return 1 - total_error*1.0/len(data)
     else:
-        print("Dev {} acc total acc: {}".format(component,1 - total_error*1.0/len(data)))
+        print(("Dev {} acc total acc: {}".format(component,1 - total_error*1.0/len(data))))
         return 1 - total_error*1.0/len(data)
 
 
@@ -294,7 +294,7 @@ def test_acc(model, batch_size, data,output_path):
     f = open(output_path,"w")
     for item in data[:]:
         db_id = item["db_id"]
-        if db_id not in table_dict: print "Error %s not in table_dict" % db_id
+        if db_id not in table_dict: print(("Error %s not in table_dict" % db_id))
         # signal.signal(signal.SIGALRM, timeout_handler)
         # signal.alarm(2) # set timer to prevent infinite recursion in SQL generation
         sql = model.forward([item["question_toks"]]*batch_size,[],table_dict[db_id])
@@ -311,7 +311,7 @@ def test_acc(model, batch_size, data,output_path):
 
 def load_word_emb(file_name, load_used=False, use_small=False):
     if not load_used:
-        print ('Loading word embedding from %s'%file_name)
+        print(('Loading word embedding from %s'%file_name))
         ret = {}
         with open(file_name) as inf:
             for idx, line in enumerate(inf):
@@ -319,7 +319,7 @@ def load_word_emb(file_name, load_used=False, use_small=False):
                     break
                 info = line.strip().split(' ')
                 if info[0].lower() not in ret:
-                    ret[info[0]] = np.array(map(lambda x:float(x), info[1:]))
+                    ret[info[0]] = np.array([float(x) for x in info[1:]])
         return ret
     else:
         print ('Load used word embedding')

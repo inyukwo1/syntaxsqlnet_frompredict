@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from net_utils import run_lstm, col_name_encode
+from models.net_utils import run_lstm, col_name_encode
 
 
 class MultiSqlPredictor(nn.Module):
@@ -16,15 +16,15 @@ class MultiSqlPredictor(nn.Module):
         self.gpu = gpu
         self.use_hs = use_hs
 
-        self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h/2,
+        self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h/2,
+        self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.mkw_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h/2,
+        self.mkw_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
@@ -91,7 +91,9 @@ class MultiSqlPredictor(nn.Module):
 
     def loss(self, score, truth):
         data = torch.from_numpy(np.array(truth))
-        truth_var = Variable(data.cuda())
+        if self.gpu:
+            data = data.cuda()
+        truth_var = Variable(data)
         loss = self.CE(score, truth_var)
 
         return loss
@@ -102,7 +104,11 @@ class MultiSqlPredictor(nn.Module):
         B = len(score)
         pred = []
         for b in range(B):
-            pred.append(np.argmax(score[b].data.cpu().numpy()))
+            if self.gpu:
+                argmax_score = np.argmax(score[b].data.cpu().numpy())
+            else:
+                argmax_score = np.argmax(score[b].data.numpy())
+            pred.append(argmax_score)
         for b, (p, t) in enumerate(zip(pred, truth)):
             if p != t:
                 err += 1

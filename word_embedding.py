@@ -16,7 +16,7 @@ class WordEmbedding(nn.Module):
         self.SQL_TOK = SQL_TOK
 
         if trainable:
-            print "Using trainable embedding"
+            print("Using trainable embedding")
             self.w2i, word_emb_val = word_emb
             # tranable when using pretrained model, init embedding weights using prev embedding
             self.embedding = nn.Embedding(len(self.w2i), N_word)
@@ -24,7 +24,7 @@ class WordEmbedding(nn.Module):
         else:
             # else use word2vec or glove
             self.word_emb = word_emb
-            print "Using fixed embedding"
+            print("Using fixed embedding")
 
     def gen_x_q_batch(self, q):
         B = len(q)
@@ -71,7 +71,7 @@ class WordEmbedding(nn.Module):
                     else:
                         history_val.append(sum(emb_list) / float(ws_len))
                 #ROOT
-                elif isinstance(item,basestring):
+                elif isinstance(item,str):
                     if item == "ROOT":
                         item = "root"
                     elif item == "asc":
@@ -94,7 +94,7 @@ class WordEmbedding(nn.Module):
                 elif isinstance(item,int):
                     history_val.append(self.word_emb.get(AGG_OPS[item], np.zeros(self.N_word, dtype=np.float32)))
                 else:
-                    print("Warning: unsupported data type in history! {}".format(item))
+                    print(("Warning: unsupported data type in history! {}".format(item)))
 
             val_embs.append(history_val)
             val_len[i] = len(history_val)

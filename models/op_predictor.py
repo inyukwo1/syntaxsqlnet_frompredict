@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from net_utils import run_lstm, col_name_encode
+from models.net_utils import run_lstm, col_name_encode
 
 
 class OpPredictor(nn.Module):
@@ -14,15 +14,15 @@ class OpPredictor(nn.Module):
         self.gpu = gpu
         self.use_hs = use_hs
 
-        self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h/2,
+        self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h/2,
+        self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.col_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h/2,
+        self.col_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
@@ -126,7 +126,9 @@ class OpPredictor(nn.Module):
         # loss for the op number
         truth_num = [len(t)-1 for t in truth] #num_score 0 maps to 1 in truth
         data = torch.from_numpy(np.array(truth_num))
-        truth_num_var = Variable(data.cuda())
+        if self.gpu:
+            data = data.cuda()
+        truth_num_var = Variable(data)
         loss += self.CE(op_num_score, truth_num_var)
         # loss for op
         T = len(op_score[0])
@@ -134,7 +136,9 @@ class OpPredictor(nn.Module):
         for b in range(B):
             truth_prob[b][truth[b]] = 1
         data = torch.from_numpy(np.array(truth_prob))
-        truth_var = Variable(data.cuda())
+        if self.gpu:
+            data = data.cuda()
+        truth_var = Variable(data)
         #loss += self.mlsml(op_score, truth_var)
         #loss += self.bce_logit(op_score, truth_var)
         pred_prob = self.sigm(op_score)
@@ -150,7 +154,11 @@ class OpPredictor(nn.Module):
         num_err, err, tot_err = 0, 0, 0
         B = len(truth)
         pred = []
-        op_num_score, op_score = [x.data.cpu().numpy() for x in score]
+        if self.gpu:
+            op_num_score, op_score = [x.data.cpu().numpy() for x in score]
+        else:
+            op_num_score, op_score = [x.data.numpy() for x in score]
+
         for b in range(B):
             cur_pred = {}
             op_num = np.argmax(op_num_score[b]) + 1 #num_score 0 maps to 1 in truth, must have at least one op

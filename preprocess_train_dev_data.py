@@ -7,10 +7,8 @@ import sys
 from collections import defaultdict
 
 ###TODO: change dirs
-train_data_path = "./data/train.json"
+train_data_path = "./data/train_spider.json"
 table_data_path = "./data/tables.json"
-if train_dev == "dev":
-    train_data_path = "./data/dev.json"
 
 train_dev = "train"
 if len(sys.argv) > 1:
@@ -64,7 +62,7 @@ def convert_to_op_index(is_not,op):
     try:
         return NEW_WHERE_DICT[op]
     except:
-        print("Unsupport op: {}".format(op))
+        print(("Unsupport op: {}".format(op)))
         return -1
 
 def index_to_column_name(index, table):
@@ -130,7 +128,7 @@ class ColPredictor:
 
     def generate_output(self):
         ret = []
-        candidate_keys = self.sql.keys()
+        candidate_keys = list(self.sql.keys())
         if self.kw:
             candidate_keys = [self.kw]
         for key in candidate_keys:
@@ -160,7 +158,7 @@ class ColPredictor:
                         try:
                             cols.append((index_to_column_name(col[2][1][1], self.table), col[2][1][2]))
                         except:
-                            print("Key:{} Col:{} Question:{}".format(key, col, self.question))
+                            print(("Key:{} Col:{} Question:{}".format(key, col, self.question)))
                         sqls.append(col)
                 ret.append((
                     self.history + [key], (len(cols), cols), sqls
@@ -228,7 +226,7 @@ class DesAscPredictor:
                 try:
                     col = self.sql[key][1][0][1][1]
                 except:
-                    print("question:{} sql:{}".format(self.question, self.sql))
+                    print(("question:{} sql:{}".format(self.question, self.sql)))
                 # self.history.append(index_to_column_name(col, self.table))
                 # self.history.append(self.sql[key][1][0][1][0])
                 if self.sql[key][0] == "asc" and self.sql["limit"]:
@@ -654,7 +652,7 @@ def parse_data(data):
             parser_item(item["question_toks"], item["sql"], table_dict[item["db_id"]], [], dataset)
     print("finished preprocess")
     for key in dataset:
-        print("dataset:{} size:{}".format(key, len(dataset[key])))
+        print(("dataset:{} size:{}".format(key, len(dataset[key]))))
         json.dump(dataset[key], open("./generated_data/{}_{}_{}.json".format(history_option,train_dev, key), "w"), indent=2)
 
 

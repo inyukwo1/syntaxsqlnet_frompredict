@@ -281,9 +281,9 @@ class SuperModel(nn.Module):
                     except Exception as e:
                         # print(e)
                         traceback.print_exc()
-                        print("history:{},current_sql:{} stack:{}".format(history[0], current_sql,stack.items))
-                        print("idx_stack:{}".format(idx_stack))
-                        print("sql_stack:{}".format(sql_stack))
+                        print(("history:{},current_sql:{} stack:{}".format(history[0], current_sql,stack.items)))
+                        print(("idx_stack:{}".format(idx_stack)))
+                        print(("sql_stack:{}".format(sql_stack)))
                         exit(1)
                 hs_emb_var, hs_len = self.embed_layer.gen_x_history_batch(history)
 
@@ -369,9 +369,9 @@ class SuperModel(nn.Module):
                     except Exception as e:
                         # print(e)
                         traceback.print_exc()
-                        print("history:{},current_sql:{} stack:{}".format(history[0], current_sql, stack.items))
-                        print("idx_stack:{}".format(idx_stack))
-                        print("sql_stack:{}".format(sql_stack))
+                        print(("history:{},current_sql:{} stack:{}".format(history[0], current_sql, stack.items)))
+                        print(("idx_stack:{}".format(idx_stack)))
+                        print(("sql_stack:{}".format(sql_stack)))
                         exit(1)
                     current_sql[kw].append(NEW_WHERE_OPS[vet[2]])
                 if label == "root":
@@ -393,7 +393,7 @@ class SuperModel(nn.Module):
         # print("{}".format(current_sql))
 
         if failed: return None
-        print("history:{}".format(history[0]))
+        print(("history:{}".format(history[0])))
         if len(sql_stack) > 0:
             current_sql = sql_stack[0]
         # print("{}".format(current_sql))
@@ -423,7 +423,7 @@ class SuperModel(nn.Module):
         ret = []
         for i in range(0,len(sql),2):
             # if len(sql[i+1]) == 0:
-            if sql[i+1] == "none_agg" or not isinstance(sql[i+1],basestring): #DEBUG-ed 20180817
+            if sql[i+1] == "none_agg" or not isinstance(sql[i+1],str): #DEBUG-ed 20180817
                 ret.append(self.gen_col(sql[i],table,table_alias_dict))
             else:
                 ret.append("{}({})".format(sql[i+1], self.gen_col(sql[i], table, table_alias_dict)))
@@ -436,7 +436,7 @@ class SuperModel(nn.Module):
             return ""
         start_idx = 0
         andor = "and"
-        if isinstance(sql[0],basestring):
+        if isinstance(sql[0],str):
             start_idx += 1
             andor = sql[0]
         ret = []
@@ -462,7 +462,7 @@ class SuperModel(nn.Module):
         if sql[-1] == True:
             limit = "limit 1"
         for i in range(0,len(sql),4):
-            if sql[i+1] == "none_agg" or not isinstance(sql[i+1],basestring): #DEBUG-ed 20180817
+            if sql[i+1] == "none_agg" or not isinstance(sql[i+1],str): #DEBUG-ed 20180817
                 ret.append("{} {}".format(self.gen_col(sql[i],table,table_alias_dict), sql[i+2]))
             else:
                 ret.append("{}({}) {}".format(sql[i+1], self.gen_col(sql[i], table, table_alias_dict),sql[i+2]))
@@ -495,7 +495,7 @@ class SuperModel(nn.Module):
                 if node[0] not in visited:
                     stack.append((node[0],history+[(node[0],node[1])]))
                     visited.add(node[0])
-        print("table {} table {}".format(start,end))
+        print(("table {} table {}".format(start,end)))
         # print("could not find path!!!!!{}".format(self.path_not_found))
         self.path_not_found += 1
         # return []
@@ -601,7 +601,7 @@ class SuperModel(nn.Module):
                     prev_table = node
         except:
             traceback.print_exc()
-            print("db:{}".format(table["db_id"]))
+            print(("db:{}".format(table["db_id"])))
             # print(table["db_id"])
             return table_alias_dict,ret
         # if len(candidate_tables) != len(table_alias_dict):
@@ -643,9 +643,9 @@ class SuperModel(nn.Module):
             if len(select_clause) > 0:
                 ret.append(select_clause)
             else:
-                print("select not found:{}".format(parent_sql))
+                print(("select not found:{}".format(parent_sql)))
         else:
-            print("select not found:{}".format(parent_sql))
+            print(("select not found:{}".format(parent_sql)))
         if len(from_clause) > 0:
             ret.append(from_clause)
         if "where" in sql:
