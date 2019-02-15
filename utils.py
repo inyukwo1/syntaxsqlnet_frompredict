@@ -5,6 +5,7 @@ import numpy as np
 import os
 import signal
 from preprocess_train_dev_data import get_table_dict
+import tqdm
 
 
 def load_train_dev_dataset(component,train_dev,history, root):
@@ -49,13 +50,13 @@ def to_batch_tables(data, idxes, st,ed, table_type):
     return col_seq
 
 ## used for training in train.py
-def epoch_train(model, optimizer, batch_size, component,embed_layer,data, table_type):
+def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert):
     model.train()
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
     st = 0
 
-    while st < len(data):
+    for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
         ed = st+batch_size if st+batch_size < len(perm) else len(perm)
         q_seq, history,label = to_batch_seq(data, perm, st, ed)
         q_emb_var, q_len = embed_layer.gen_x_q_batch(q_seq)
@@ -151,10 +152,17 @@ def epoch_train(model, optimizer, batch_size, component,embed_layer,data, table_
         # print("label {}".format(label))
         loss = model.loss(score, label)
         # print("loss {}".format(loss.data.cpu().numpy()))
-        cum_loss += loss.data.cpu().numpy()[0]*(ed - st)
+        if gpu:
+            cum_loss += loss.data.cpu().numpy()*(ed - st)
+        else:
+            cum_loss += loss.data.numpy()*(ed - st)
         optimizer.zero_grad()
+        if optimizer_bert:
+            optimizer_bert.zero_grad()
         loss.backward()
         optimizer.step()
+        if optimizer_bert:
+            optimizer_bert.step()
 
         st = ed
 

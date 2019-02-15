@@ -4,6 +4,7 @@ import datetime
 import argparse
 import numpy as np
 from utils import *
+from models.net_utils import encode_question
 from word_embedding import WordEmbedding
 from models.agg_predictor import AggPredictor
 from models.col_predictor import ColPredictor
@@ -14,11 +15,16 @@ from models.multisql_predictor import MultiSqlPredictor
 from models.op_predictor import OpPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
+from pytorch_pretrained_bert import BertModel
 
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor')
 SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--tqdm', action='store_true',
+            help='If set, use tqdm.')
+    parser.add_argument('--bert', action='store_true',
+            help='If set, use bert to encode question.')
     parser.add_argument('--toy', action='store_true',
             help='If set, use small data; used for fast debugging.')
     parser.add_argument('--save_dir', type=str, default='',
@@ -49,15 +55,20 @@ if __name__ == '__main__':
         BATCH_SIZE=20
     else:
         USE_SMALL=False
-        BATCH_SIZE=64
+        BATCH_SIZE=16
 
     if torch.cuda.is_available():
         GPU = True
     else:
         GPU = False
+    if args.bert:
+        BERT = True
+    else:
+        BERT = False
     # TRAIN_ENTRY=(False, True, False)  # (AGG, SEL, COND)
     # TRAIN_AGG, TRAIN_SEL, TRAIN_COND = TRAIN_ENTRY
     learning_rate = 1e-4
+    bert_learning_rate = 1e-5
     if args.train_component not in TRAIN_COMPONENTS:
         print("Invalid train component")
         exit(1)
@@ -72,38 +83,51 @@ if __name__ == '__main__':
     print("finished load word embedding")
     #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
     model = None
+    if BERT:
+        bert_model = BertModel.from_pretrained('bert-base-uncased')
+        if GPU:
+            bert_model.cuda()
+        def berter(q, q_len):
+            return encode_question(bert_model, q, q_len)
+        bert = berter
+    else:
+        bert_model = None
+        bert = None
     if args.train_component == "multi_sql":
-        model = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "keyword":
-        model = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "col":
-        model = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "op":
-        model = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "agg":
-        model = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "root_tem":
-        model = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "des_asc":
-        model = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "having":
-        model = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs)
+        model = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "andor":
-        model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs)
+        model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     # model = SQLNet(word_emb, N_word=N_word, gpu=GPU, trainable_emb=args.train_emb)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay = 0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
+    if BERT:
+        optimizer_bert = torch.optim.Adam(bert_model.parameters(), lr=bert_learning_rate)
+    else:
+        optimizer_bert = None
     print("finished build model")
 
     print_flag = False
-    embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU,
-                                SQL_TOK=SQL_TOK, trainable=args.train_emb)
+    embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=BERT, trainable=args.train_emb)
     print("start training")
     best_acc = 0.0
     for i in range(args.epoch):
-        print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())))
-        print((' Loss = %s'%epoch_train(
-                model, optimizer, BATCH_SIZE,args.train_component,embed_layer,train_data,table_type=args.table_type)))
-        acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer,dev_data,table_type=args.table_type)
+        print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
+        print((' Loss = %s'%epoch_train(GPU,
+                model, optimizer, BATCH_SIZE,args.train_component,embed_layer,train_data, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
+        acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer,dev_data, table_type=args.table_type)
         if acc > best_acc:
             best_acc = acc
             print("Save model...")

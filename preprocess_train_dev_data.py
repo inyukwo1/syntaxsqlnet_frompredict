@@ -289,6 +289,27 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
         elif node[0] == "none":
             with_join = len(node[1]["from"]["table_units"]) > 1
             history, label, sql = KeyWordPredictor(question_tokens, node[1], history).generate_output()
+            from_tables = node[1]["from"]["table_units"]
+            table_list = [table[1] for table in from_tables]
+            join_conds = node[1]["from"]["conds"]
+            join_cols_list = []
+            for cond in join_conds:
+                join_cols_list.append(cond[2][1][1])
+                join_cols_list.append(cond[3][1])
+            join_table_dict = dict()
+            for col in join_cols_list:
+                parent_table = table["column_names"][col][0]
+                if parent_table not in join_table_dict:
+                    join_table_dict[parent_table] = set()
+                join_table_dict[parent_table].add(col)
+            for table in join_table_dict:
+                join_table_dict[table] = list(join_table_dict[table])
+            dataset['from_dataset'].append({
+                "question_tokens": question_tokens,
+                "ts": table_schema,
+                "history": history[:],
+                "label": join_table_dict
+            })
             label_idxs = []
             for item in label[1]:
                 if item in KW_DICT:
@@ -641,7 +662,8 @@ def parse_data(data):
         "root_tem_dataset": [],
         "des_asc_dataset": [],
         "having_dataset": [],
-        "andor_dataset":[]
+        "andor_dataset":[],
+        "from_dataset":[]
     }
     table_dict = get_table_dict(table_data_path)
     for item in data:

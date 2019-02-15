@@ -39,6 +39,8 @@ if __name__ == '__main__':
         USE_SMALL=False
         GPU=True
         BATCH_SIZE=2 #64
+    if not torch.cuda.is_available():
+        GPU=False
     # TRAIN_ENTRY=(False, True, False)  # (AGG, SEL, COND)
     # TRAIN_AGG, TRAIN_SEL, TRAIN_COND = TRAIN_ENTRY
     learning_rate = 1e-4

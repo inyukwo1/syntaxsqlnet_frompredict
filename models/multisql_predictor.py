@@ -4,19 +4,24 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from models.net_utils import run_lstm, col_name_encode
+from models.net_utils import run_lstm, encode_question
+from pytorch_pretrained_bert import BertModel
 
 
 class MultiSqlPredictor(nn.Module):
     '''Predict if the next token is (multi SQL key words):
         NONE, EXCEPT, INTERSECT, or UNION.'''
-    def __init__(self, N_word, N_h, N_depth, gpu, use_hs):
+    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert=None):
         super(MultiSqlPredictor, self).__init__()
         self.N_h = N_h
         self.gpu = gpu
         self.use_hs = use_hs
 
-        self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+        self.use_bert = True if bert else False
+        if bert:
+            self.q_bert = bert
+        else:
+            self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
@@ -28,9 +33,9 @@ class MultiSqlPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.q_att = nn.Linear(N_h, N_h)
+        self.q_att = nn.Linear(768, N_h)
         self.hs_att = nn.Linear(N_h, N_h)
-        self.multi_out_q = nn.Linear(N_h, N_h)
+        self.multi_out_q = nn.Linear(768, N_h)
         self.multi_out_hs = nn.Linear(N_h, N_h)
         self.multi_out_c = nn.Linear(N_h, N_h)
         self.multi_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 1))
@@ -54,7 +59,10 @@ class MultiSqlPredictor(nn.Module):
         # q_enc: (B, max_q_len, hid_dim)
         # hs_enc: (B, max_hs_len, hid_dim)
         # mkw: (B, 4, hid_dim)
-        q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
+        if self.use_bert:
+            q_enc = self.q_bert(q_emb_var, q_len)
+        else:
+            q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         mkw_enc, _ = run_lstm(self.mkw_lstm, mkw_emb_var, mkw_len)
 

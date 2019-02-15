@@ -4,16 +4,21 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
+from pytorch_pretrained_bert import BertTokenizer
+
 
 AGG_OPS = ('none', 'maximum', 'minimum', 'count', 'sum', 'average')
+
+
 class WordEmbedding(nn.Module):
-    def __init__(self, word_emb, N_word, gpu, SQL_TOK,
-            trainable=False):
+    def __init__(self, word_emb, N_word, gpu, SQL_TOK, use_bert, trainable=False):
         super(WordEmbedding, self).__init__()
         self.trainable = trainable
         self.N_word = N_word
         self.gpu = gpu
         self.SQL_TOK = SQL_TOK
+        self.use_bert = use_bert
+        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
 
         if trainable:
             print("Using trainable embedding")
@@ -27,6 +32,8 @@ class WordEmbedding(nn.Module):
             print("Using fixed embedding")
 
     def gen_x_q_batch(self, q):
+        if self.use_bert:
+            return self.gen_x_q_bert_batch(q)
         B = len(q)
         val_embs = []
         val_len = np.zeros(B, dtype=np.int64)
@@ -49,6 +56,22 @@ class WordEmbedding(nn.Module):
         val_inp_var = Variable(val_inp)
 
         return val_inp_var, val_len
+
+    def gen_x_q_bert_batch(self, q):
+        tokenized_q = []
+        q_len = np.zeros(len(q), dtype=np.int64)
+        for idx, one_q in enumerate(q):
+            tokenized_one_q = self.bert_tokenizer.tokenize(" ".join(one_q))
+            indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenized_one_q)
+            tokenized_q.append(indexed_one_q)
+            q_len[idx] = len(indexed_one_q)
+        max_len = max(q_len)
+        for tokenized_one_q in tokenized_q:
+            tokenized_one_q += [0] * (max_len - len(tokenized_one_q))
+        tokenized_q = torch.LongTensor(tokenized_q)
+        if self.gpu:
+            tokenized_q = tokenized_q.cuda()
+        return tokenized_q, q_len
 
     def gen_x_history_batch(self, history):
         B = len(history)

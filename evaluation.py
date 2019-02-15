@@ -24,6 +24,7 @@ import json
 import sqlite3
 import traceback
 import argparse
+import random
 
 from process_sql import tokenize, get_schema, get_tables_with_alias, Schema, get_sql
 
@@ -125,6 +126,27 @@ def eval_sel(pred, label):
             label_wo_agg.remove(unit[1])
 
     return label_total, pred_total, cnt, cnt_wo_agg
+
+
+def eval_from(pred, label):
+    pred_table_units = pred['from']['table_units']
+    label_table_units = label['from']['table_units']
+    pred_conds = pred['from']['conds']
+    label_conds = label['from']['conds']
+
+    label_total = len(label_table_units) + len(label_conds)
+    pred_total = len(pred_table_units) + len(pred_conds)
+
+    cnt = 0
+    for unit in pred_table_units:
+        if unit in label_table_units:
+            cnt += 1
+            label_table_units.remove(unit)
+    for unit in pred_conds:
+        if unit in label_conds:
+            cnt += 1
+            label_conds.remove(unit)
+    return label_total, pred_total, cnt
 
 
 def eval_where(pred, label):
@@ -382,10 +404,10 @@ class Evaluator:
         for _, score in list(partial_scores.items()):
             if score['f1'] != 1:
                 return 0
-        if len(label['from']['table_units']) > 0:
-            label_tables = sorted(label['from']['table_units'])
-            pred_tables = sorted(pred['from']['table_units'])
-            return label_tables == pred_tables
+        # if len(label['from']['table_units']) > 0:
+        #     label_tables = sorted(label['from']['table_units'])
+        #     pred_tables = sorted(pred['from']['table_units'])
+        #     return label_tables == pred_tables
         return 1
 
     def eval_partial_match(self, pred, label):
@@ -396,6 +418,10 @@ class Evaluator:
         res['select'] = {'acc': acc, 'rec': rec, 'f1': f1,'label_total':label_total,'pred_total':pred_total}
         acc, rec, f1 = get_scores(cnt_wo_agg, pred_total, label_total)
         res['select(no AGG)'] = {'acc': acc, 'rec': rec, 'f1': f1,'label_total':label_total,'pred_total':pred_total}
+
+        label_total, pred_total, cnt = eval_from(pred, label)
+        acc, rec, f1 = get_scores(cnt, pred_total, label_total)
+        res['from'] = {'acc': acc, 'rec': rec, 'f1': f1,'label_total':label_total,'pred_total':pred_total}
 
         label_total, pred_total, cnt, cnt_wo_agg = eval_where(pred, label)
         acc, rec, f1 = get_scores(cnt, pred_total, label_total)
@@ -442,7 +468,7 @@ def isValidSQL(sql, db):
 
 def print_scores(scores, etype):
     levels = ['easy', 'medium', 'hard', 'extra', 'all']
-    partial_types = ['select', 'select(no AGG)', 'where', 'where(no OP)', 'group(no Having)',
+    partial_types = ['select', 'select(no AGG)', 'from', 'where', 'where(no OP)', 'group(no Having)',
                      'group', 'order', 'and/or', 'IUEN', 'keywords']
 
     print("{:20} {:20} {:20} {:20} {:20} {:20}".format("", *levels))
@@ -480,12 +506,15 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
 
     with open(predict) as f:
         plist = [l.strip().split('\t') for l in f.readlines() if len(l.strip()) > 0]
+    mixed_list = list(zip(glist, plist))
+    random.shuffle(mixed_list)
+    glist, plist = zip(*mixed_list)
     # plist = [("select max(Share),min(Share) from performance where Type != 'terminal'", "orchestra")]
     # glist = [("SELECT max(SHARE) ,  min(SHARE) FROM performance WHERE TYPE != 'Live final'", "orchestra")]
     evaluator = Evaluator()
 
     levels = ['easy', 'medium', 'hard', 'extra', 'all']
-    partial_types = ['select', 'select(no AGG)', 'where', 'where(no OP)', 'group(no Having)',
+    partial_types = ['select', 'select(no AGG)','from', 'where', 'where(no OP)', 'group(no Having)',
                      'group', 'order', 'and/or', 'IUEN', 'keywords']
     entries = []
     scores = {}
@@ -497,6 +526,8 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
             scores[level]['partial'][type_] = {'acc': 0., 'rec': 0., 'f1': 0.,'acc_count':0,'rec_count':0}
 
     eval_err_num = 0
+    compound_correct = 0
+    compound_detect = 0
     for p, g in zip(plist, glist):
         p_str = p[0]
         g_str, db = g
@@ -504,6 +535,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
         db = os.path.join(db_dir, db, db + ".sqlite")
         schema = Schema(get_schema(db))
         g_sql = get_sql(schema, g_str)
+        assert g_sql['from']['table_units']
         hardness = evaluator.eval_hardness(g_sql)
         scores[hardness]['count'] += 1
         scores['all']['count'] += 1
@@ -549,6 +581,9 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
 
         if etype in ["all", "match"]:
             exact_score = evaluator.eval_exact_match(p_sql, g_sql)
+            if g_sql['intersect'] or g_sql['union'] or g_sql['except']:
+                compound_detect += 1
+                compound_correct += exact_score
             partial_scores = evaluator.partial_scores
             if exact_score == 0:
                 print(("{} pred: {}".format(hardness,p_str)))
@@ -606,6 +641,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
                         2.0 * scores[level]['partial'][type_]['acc'] * scores[level]['partial'][type_]['rec'] / (
                         scores[level]['partial'][type_]['rec'] + scores[level]['partial'][type_]['acc'])
 
+    print("compound: {} / {}".format(compound_correct, compound_detect))
     print_scores(scores, etype)
 
 
@@ -634,7 +670,8 @@ def eval_exec_match(db, p_str, g_str, pred, gold):
 
     p_val_units = [unit[1] for unit in pred['select'][1]]
     q_val_units = [unit[1] for unit in gold['select'][1]]
-    return res_map(p_res, p_val_units) == res_map(q_res, q_val_units)
+    same = res_map(p_res, p_val_units) == res_map(q_res, q_val_units)
+    return same
 
 
 # Rebuild SQL functions for value evaluation
@@ -671,7 +708,7 @@ def rebuild_sql_val(sql):
     if sql is None or not DISABLE_VALUE:
         return sql
 
-    sql['from']['conds'] = rebuild_condition_val(sql['from']['conds'])
+    # sql['from']['conds'] = rebuild_condition_val(sql['from']['conds'])
     sql['having'] = rebuild_condition_val(sql['having'])
     sql['where'] = rebuild_condition_val(sql['where'])
     sql['intersect'] = rebuild_sql_val(sql['intersect'])

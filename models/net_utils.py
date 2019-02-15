@@ -3,6 +3,19 @@ import torch.nn as nn
 import numpy as np
 from torch.autograd import Variable
 
+
+def encode_question(bert, inp, inp_len):
+    [batch_num, max_seq_len] = list(inp.size())
+    mask = np.zeros((batch_num, max_seq_len), dtype=np.float32)
+    for idx, len in enumerate(inp_len):
+        mask[idx, :len] = np.ones(len, dtype=np.float32)
+    mask = torch.LongTensor(mask)
+    if torch.cuda.is_available():
+        mask = mask.cuda()
+    encoded, _ = bert(input_ids=inp, attention_mask=mask)
+    return encoded[2]
+
+
 def run_lstm(lstm, inp, inp_len, hidden=None):
     # Run the LSTM using packed sequence.
     # This requires to first sort the input according to its length.

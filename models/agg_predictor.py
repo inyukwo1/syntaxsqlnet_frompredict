@@ -4,19 +4,24 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from models.net_utils import run_lstm, col_name_encode
+from models.net_utils import run_lstm, col_name_encode, encode_question
+from pytorch_pretrained_bert import BertModel
 
 
 class AggPredictor(nn.Module):
-    def __init__(self, N_word, N_h, N_depth, gpu, use_hs):
+    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert=None):
         super(AggPredictor, self).__init__()
         self.N_h = N_h
         self.gpu = gpu
         self.use_hs = use_hs
 
-        self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
-                num_layers=N_depth, batch_first=True,
-                dropout=0.3, bidirectional=True)
+        self.use_bert = True if bert else False
+        if bert:
+            self.q_bert = bert
+        else:
+            self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+                                    num_layers=N_depth, batch_first=True,
+                                    dropout=0.3, bidirectional=True)
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
@@ -26,16 +31,16 @@ class AggPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.q_num_att = nn.Linear(N_h, N_h)
+        self.q_num_att = nn.Linear(768, N_h)
         self.hs_num_att = nn.Linear(N_h, N_h)
-        self.agg_num_out_q = nn.Linear(N_h, N_h)
+        self.agg_num_out_q = nn.Linear(768, N_h)
         self.agg_num_out_hs = nn.Linear(N_h, N_h)
         self.agg_num_out_c = nn.Linear(N_h, N_h)
         self.agg_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 4)) #for 0-3 agg num
 
-        self.q_att = nn.Linear(N_h, N_h)
+        self.q_att = nn.Linear(768, N_h)
         self.hs_att = nn.Linear(N_h, N_h)
-        self.agg_out_q = nn.Linear(N_h, N_h)
+        self.agg_out_q = nn.Linear(768, N_h)
         self.agg_out_hs = nn.Linear(N_h, N_h)
         self.agg_out_c = nn.Linear(N_h, N_h)
         self.agg_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 5)) #for 1-5 aggregators
@@ -56,7 +61,10 @@ class AggPredictor(nn.Module):
         max_col_len = max(col_len)
         B = len(q_len)
 
-        q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
+        if self.use_bert:
+            q_enc = self.q_bert(q_emb_var, q_len)
+        else:
+            q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         col_enc, _ = col_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
 
