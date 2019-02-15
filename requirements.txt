@@ -3,7 +3,6 @@ nltk
 numpy
 pandas
 records
-torch
 et-xmlfile
 jdcal
 odfpy
@@ -18,3 +17,6 @@ unicodecsv
 xlrd
 xlwt
 scikit-learn
+pytorch-pretrained-bert
+tqdm
+sqlparse
