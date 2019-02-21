@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from models.net_utils import run_lstm, col_name_encode, encode_question
+from models.net_utils import run_lstm, col_tab_name_encode, plain_conditional_weighted_num, SIZE_CHECK
 from pytorch_pretrained_bert import BertModel
 
 
@@ -18,10 +18,12 @@ class AggPredictor(nn.Module):
         self.use_bert = True if bert else False
         if bert:
             self.q_bert = bert
+            encoded_num = 768
         else:
             self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                                     num_layers=N_depth, batch_first=True,
                                     dropout=0.3, bidirectional=True)
+            encoded_num = N_h
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
@@ -31,16 +33,16 @@ class AggPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.q_num_att = nn.Linear(768, N_h)
+        self.q_num_att = nn.Linear(encoded_num, N_h)
         self.hs_num_att = nn.Linear(N_h, N_h)
-        self.agg_num_out_q = nn.Linear(768, N_h)
+        self.agg_num_out_q = nn.Linear(encoded_num, N_h)
         self.agg_num_out_hs = nn.Linear(N_h, N_h)
         self.agg_num_out_c = nn.Linear(N_h, N_h)
         self.agg_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 4)) #for 0-3 agg num
 
-        self.q_att = nn.Linear(768, N_h)
+        self.q_att = nn.Linear(encoded_num, N_h)
         self.hs_att = nn.Linear(N_h, N_h)
-        self.agg_out_q = nn.Linear(768, N_h)
+        self.agg_out_q = nn.Linear(encoded_num, N_h)
         self.agg_out_hs = nn.Linear(N_h, N_h)
         self.agg_out_c = nn.Linear(N_h, N_h)
         self.agg_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 5)) #for 1-5 aggregators
@@ -66,7 +68,7 @@ class AggPredictor(nn.Module):
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        col_enc, _ = col_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
+        col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
 
         col_emb = []
         for b in range(B):
@@ -74,38 +76,18 @@ class AggPredictor(nn.Module):
         col_emb = torch.stack(col_emb)
 
         # Predict agg number
-        att_val_qc_num = torch.bmm(col_emb.unsqueeze(1), self.q_num_att(q_enc).transpose(1, 2)).view(B, -1)
-        for idx, num in enumerate(q_len):
-            if num < max_q_len:
-                att_val_qc_num[idx, num:] = -100
-        att_prob_qc_num = self.softmax(att_val_qc_num)
-        q_weighted_num = (q_enc * att_prob_qc_num.unsqueeze(2)).sum(1)
+        q_weighted_num = plain_conditional_weighted_num(self.q_num_att, q_enc, q_len, col_emb)
 
         # Same as the above, compute SQL history embedding weighted by column attentions
-        att_val_hc_num = torch.bmm(col_emb.unsqueeze(1), self.hs_num_att(hs_enc).transpose(1, 2)).view(B, -1)
-        for idx, num in enumerate(hs_len):
-            if num < max_hs_len:
-                att_val_hc_num[idx, num:] = -100
-        att_prob_hc_num = self.softmax(att_val_hc_num)
-        hs_weighted_num = (hs_enc * att_prob_hc_num.unsqueeze(2)).sum(1)
-        # agg_num_score: (B, 4)
-        agg_num_score = self.agg_num_out(self.agg_num_out_q(q_weighted_num) + int(self.use_hs)* self.agg_num_out_hs(hs_weighted_num) + self.agg_num_out_c(col_emb))
+        hs_weighted_num = plain_conditional_weighted_num(self.hs_num_att, hs_enc, hs_len, col_emb)
+        agg_num_score = self.agg_num_out(self.agg_num_out_q(q_weighted_num) + int(self.use_hs) * self.agg_num_out_hs(hs_weighted_num) + self.agg_num_out_c(col_emb))
+        SIZE_CHECK(agg_num_score, [B, 4])
 
         # Predict aggregators
-        att_val_qc = torch.bmm(col_emb.unsqueeze(1), self.q_att(q_enc).transpose(1, 2)).view(B, -1)
-        for idx, num in enumerate(q_len):
-            if num < max_q_len:
-                att_val_qc[idx, num:] = -100
-        att_prob_qc = self.softmax(att_val_qc)
-        q_weighted = (q_enc * att_prob_qc.unsqueeze(2)).sum(1)
+        q_weighted = plain_conditional_weighted_num(self.q_att, q_enc, q_len, col_emb)
 
         # Same as the above, compute SQL history embedding weighted by column attentions
-        att_val_hc = torch.bmm(col_emb.unsqueeze(1), self.hs_att(hs_enc).transpose(1, 2)).view(B, -1)
-        for idx, num in enumerate(hs_len):
-            if num < max_hs_len:
-                att_val_hc[idx, num:] = -100
-        att_prob_hc = self.softmax(att_val_hc)
-        hs_weighted = (hs_enc * att_prob_hc.unsqueeze(2)).sum(1)
+        hs_weighted = plain_conditional_weighted_num(self.hs_att, hs_enc, hs_len, col_emb)
         # agg_score: (B, 5)
         agg_score = self.agg_out(self.agg_out_q(q_weighted) + int(self.use_hs)* self.agg_out_hs(hs_weighted) + self.agg_out_c(col_emb))
 

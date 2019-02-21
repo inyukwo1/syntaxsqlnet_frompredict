@@ -5,6 +5,7 @@ import sys
 import json
 import sqlite3
 import sqlparse
+import tqdm
 from os import listdir, makedirs
 from collections import OrderedDict
 from nltk import word_tokenize, tokenize
@@ -108,8 +109,8 @@ def get_schemas_from_json(fpath):
         table_names_original = db['table_names_original']
         tables[db_id] = {'column_names_original': column_names_original, 'table_names_original': table_names_original}
         for i, tabn in enumerate(table_names_original):
-            table = str(tabn.encode("utf8").lower())
-            cols = [str(col.encode("utf8").lower()) for td, col in column_names_original if td == i]
+            table = tabn.lower()
+            cols = [col.lower() for td, col in column_names_original if td == i]
             schema[table] = cols
         schemas[db_id] = schema
 
@@ -144,54 +145,52 @@ def parse_file_and_sql(filepath, schema, db_id):
                 questions.append(line.lstrip().rstrip())
             i += 1
             continue
-    if line.startswith("P:"):
-        index = line.find("P:")
-        line = line[index+2:]
-        if line != '' and len(line) != 0:
-            questions.append(line.lstrip().rstrip())
-        has_prefix = True
-    if (line.startswith("select") or line.startswith("SELECT") or line.startswith("Select") or\
-        line.startswith("with") or line.startswith("With") or line.startswith("WITH")) and has_prefix:
-        sql = [line]
-        i += 1
-        while i < len(lines):
-            line = lines[i]
-            line = lines[i].lstrip().rstrip()
-            line = line.replace("\r","")
-            line = line.replace("\n","")
-            if len(line) == 0 or len(line.strip()) == 0 or ord('0') <= ord(line[0]) <= ord('9') or \
-                    not (line[0].isalpha() or line[0] in ['(',')','=','<','>', '+', '-','!','\'','\"','%']):
-                break
-            sql.append(line)
+        if line.startswith("P:"):
+            index = line.find("P:")
+            line = line[index+2:]
+            if line != '' and len(line) != 0:
+                questions.append(line.lstrip().rstrip())
+            has_prefix = True
+        if (line.startswith("select") or line.startswith("SELECT") or line.startswith("Select") or\
+            line.startswith("with") or line.startswith("With") or line.startswith("WITH")) and has_prefix:
+            sql = [line]
             i += 1
-        sql = " ".join(sql)
-        sql = sqlparse.format(sql, reindent=False, keyword_case='upper')
-        sql = re.sub(r"(<=|>=|=|<|>|,)",r" \1 ",sql)
-        sql = re.sub(r"(T\d+\.)\s",r"\1",sql)
-        for ix, q in enumerate(questions):
-            try:
-                q = q.encode("utf8")
-                sql = sql.encode("utf8")
-                q_toks = word_tokenize(q)
-                query_toks = word_tokenize(sql)
-                query_toks_no_value = strip_query(sql)
-                sql_label = None
+            while i < len(lines):
+                line = lines[i]
+                line = lines[i].lstrip().rstrip()
+                line = line.replace("\r","")
+                line = line.replace("\n","")
+                if len(line) == 0 or len(line.strip()) == 0 or ord('0') <= ord(line[0]) <= ord('9') or \
+                        not (line[0].isalpha() or line[0] in ['(',')','=','<','>', '+', '-','!','\'','\"','%']):
+                    break
+                sql.append(line)
+                i += 1
+            sql = " ".join(sql)
+            sql = sqlparse.format(sql, reindent=False, keyword_case='upper')
+            sql = re.sub(r"(<=|>=|=|<|>|,)",r" \1 ",sql)
+            sql = re.sub(r"(T\d+\.)\s",r"\1",sql)
+            for ix, q in enumerate(questions):
+                try:
+                    q_toks = word_tokenize(q)
+                    query_toks = word_tokenize(sql)
+                    query_toks_no_value = strip_query(sql)
+                    sql_label = None
 
-                sql_label = get_sql(schema, sql)
-                ret.append({'question': q,
-                            'question_toks': q_toks,
-                            'query': sql,
-                            'query_toks': query_toks,
-                            'query_toks_no_value': query_toks_no_value,
-                            'sql': sql_label,
-                            'db_id': db_id})
-            except Exception as e:
-                pass
-            questions = []
-            has_prefix = False
-            continue
+                    sql_label = get_sql(schema, sql)
+                    ret.append({'question': q,
+                                'question_toks': q_toks,
+                                'query': sql,
+                                'query_toks': query_toks,
+                                'query_toks_no_value': query_toks_no_value,
+                                'sql': sql_label,
+                                'db_id': db_id})
+                except Exception as e:
+                    pass
+                questions = []
+                has_prefix = False
+                continue
 
-    i += 1
+        i += 1
 
     return ret
 
@@ -207,7 +206,7 @@ if __name__ == '__main__':
     schemas, db_names, tables = get_schemas_from_json(table_file)
     db_files = [f for f in listdir(input_dir) if f.endswith('.txt')]
     fn_map = {}
-    for f in db_files:
+    for f in tqdm.tqdm(db_files):
         flag = True
         for db in db_names:
             if db.lower() in f.lower():
@@ -222,7 +221,7 @@ if __name__ == '__main__':
         sys.exit()
 
     data = []
-    for f, db_id in fn_map.items():
+    for f, db_id in tqdm.tqdm(fn_map.items()):
         raw_file = join(input_dir, f)
         schema = schemas[db_id]
         table = tables[db_id]

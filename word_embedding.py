@@ -153,17 +153,23 @@ class WordEmbedding(nn.Module):
         return val_inp_var
 
 
-    def gen_col_batch(self, cols):
+    def gen_col_batch(self, cols, tables):
         ret = []
         col_len = np.zeros(len(cols), dtype=np.int64)
+        tab_len = np.zeros(len(tables), dtype=np.int64)
 
         names = []
         for b, one_cols in enumerate(cols):
             names = names + one_cols
             col_len[b] = len(one_cols)
-        #TODO: what is the diff bw name_len and col_len?
         name_inp_var, name_len = self.str_list_to_batch(names)
-        return name_inp_var, name_len, col_len
+
+        table_names = []
+        for b, one_tables in enumerate(tables):
+            table_names = table_names + one_tables
+            tab_len[b] = len(one_tables)
+        table_name_inp_var, table_name_len = self.str_list_to_batch(table_names)
+        return name_inp_var, name_len, col_len, table_name_inp_var, table_name_len, tab_len
 
     def str_list_to_batch(self, str_list):
         """get a list var of wemb of words in each column name in current bactch"""

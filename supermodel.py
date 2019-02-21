@@ -67,8 +67,12 @@ def to_batch_tables(tables, B, table_type):
         if tid == -1:
             tabn = ["all"]
         else:
-            if table_type=="no": tabn = []
-            else: tabn = tname_toks[tid]
+            if table_type == "no":
+                tabn = []
+            elif table_type == "struct":
+                tabn=[]
+            else:
+                tabn = tname_toks[tid]
         for t in tabn:
             if t not in col:
                 col_one.append(t)
@@ -76,8 +80,12 @@ def to_batch_tables(tables, B, table_type):
         cols_add.append(col_one)
 
     col_seq = [cols_add] * B
+    tab_name_seq = [tname_toks] * B
+    par_tab_num_seq = [tab_seq] * B
+    foreign_keys = [tables["foreign_keys"]] * B
 
-    return col_seq
+    return col_seq, tab_name_seq, par_tab_num_seq, foreign_keys
+
 
 class SuperModel(nn.Module):
     def __init__(self, word_emb, N_word, N_h=300, N_depth=2, gpu=True, trainable_emb=False, table_type="std", use_hs=True, bert=None):
@@ -141,11 +149,12 @@ class SuperModel(nn.Module):
 
     def full_forward(self, q_seq, history, tables):
         B = len(q_seq)
+
         # print("q_seq:{}".format(q_seq))
         # print("Batch size:{}".format(B))
         q_emb_var, q_len = self.embed_layer.gen_x_q_batch(q_seq)
-        col_seq = to_batch_tables(tables, B, self.table_type)
-        col_emb_var, col_name_len, col_len = self.embed_layer.gen_col_batch(col_seq)
+        col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(tables, B, self.table_type)
+        col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = self.embed_layer.gen_col_batch(col_seq, tab_seq)
 
         mkw_emb_var = self.embed_layer.gen_word_list_embedding(["none","except","intersect","union"],(B))
         mkw_len = np.full(q_len.shape, 4,dtype=np.int64)

@@ -26,6 +26,9 @@ def to_batch_seq(data, idxes, st, ed):
 def to_batch_tables(data, idxes, st,ed, table_type):
     # col_lens = []
     col_seq = []
+    tname_seqs = []
+    par_tnum_seqs = []
+    foreign_keys = []
     for i in range(st, ed):
         ts = data[idxes[i]]["ts"]
         tname_toks = [x.split(" ") for x in ts[0]]
@@ -38,16 +41,23 @@ def to_batch_tables(data, idxes, st,ed, table_type):
             if tid == -1:
                 tabn = ["all"]
             else:
-                if table_type=="no": tabn = []
-                else: tabn = tname_toks[tid]
+                if table_type == "no":
+                    tabn = []
+                elif table_type == "struct":
+                    tabn = []
+                else:
+                    tabn = tname_toks[tid]
             for t in tabn:
                 if t not in col:
                     col_one.append(t)
             col_one.extend(col)
             cols_add.append(col_one)
         col_seq.append(cols_add)
+        tname_seqs.append(tname_toks)
+        par_tnum_seqs.append(tab_seq)
+        foreign_keys.append(ts[3])
 
-    return col_seq
+    return col_seq, tname_seqs, par_tnum_seqs, foreign_keys
 
 ## used for training in train.py
 def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert):
@@ -77,8 +87,8 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
         elif component == "col":
             #col word embedding
             # [[0,1,3]]
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len)
 
         elif component == "op":
@@ -90,14 +100,14 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
                 gt_col[index] = data[perm[i]]["gt_col"]
                 index += 1
 
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, gt_col=gt_col)
 
         elif component == "agg":
             # [[0,1,3]]
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -109,8 +119,8 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
 
         elif component == "root_tem":
             #B*0/1
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -122,8 +132,8 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
 
         elif component == "des_asc":
             # B*0/1
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -134,8 +144,8 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, gt_col=gt_col)
 
         elif component == 'having':
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -147,9 +157,13 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
 
         elif component == "andor":
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
-        # score = model.forward(q_seq, col_seq, col_num, pred_entry,
-        #         gt_where=gt_where_seq, gt_cond=gt_cond_seq, gt_sel=gt_sel_seq)
-        # print("label {}".format(label))
+
+        elif component == "from":
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
+                col_seq, tab_seq)
+            score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
+                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         loss = model.loss(score, label)
         # print("loss {}".format(loss.data.cpu().numpy()))
         if gpu:
@@ -203,13 +217,13 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         elif component == "col":
             #col word embedding
             # [[0,1,3]]
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len)
         elif component == "op":
             #B*index
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape,dtype=np.int64)
             # print(ed)
             index = 0
@@ -221,8 +235,8 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
 
         elif component == "agg":
             # [[0,1,3]]
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -235,8 +249,8 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
 
         elif component == "root_tem":
             #B*0/1
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -248,8 +262,8 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
 
         elif component == "des_asc":
             # B*0/1
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -260,8 +274,8 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, gt_col=gt_col)
 
         elif component == 'having':
-            col_seq = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len = embed_layer.gen_col_batch(col_seq)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
             gt_col = np.zeros(q_len.shape, dtype=np.int64)
             # print(ed)
             index = 0
@@ -273,6 +287,12 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
 
         elif component == "andor":
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
+        elif component == "from":
+            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
+                col_seq, tab_seq)
+            score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
+                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         # print("label {}".format(label))
         if component in ("agg","col","keyword","op"):
             num_err, p_err, err = model.check_acc(score, label)

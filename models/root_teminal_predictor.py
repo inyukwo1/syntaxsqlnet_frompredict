@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from models.net_utils import run_lstm, col_name_encode, encode_question
+from models.net_utils import run_lstm, col_tab_name_encode, plain_conditional_weighted_num, SIZE_CHECK
 from pytorch_pretrained_bert import BertModel
 
 
@@ -18,10 +18,12 @@ class RootTeminalPredictor(nn.Module):
         self.use_bert = True if bert else False
         if bert:
             self.q_bert = bert
+            encoded_num = 768
         else:
             self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
+            encoded_num = N_h
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
@@ -31,9 +33,9 @@ class RootTeminalPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.q_att = nn.Linear(768, N_h)
+        self.q_att = nn.Linear(encoded_num, N_h)
         self.hs_att = nn.Linear(N_h, N_h)
-        self.rt_out_q = nn.Linear(768, N_h)
+        self.rt_out_q = nn.Linear(encoded_num, N_h)
         self.rt_out_hs = nn.Linear(N_h, N_h)
         self.rt_out_c = nn.Linear(N_h, N_h)
         self.rt_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 2)) #for 2 operators
@@ -48,16 +50,13 @@ class RootTeminalPredictor(nn.Module):
             self.cuda()
 
     def forward(self, q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, gt_col):
-        max_q_len = max(q_len)
-        max_hs_len = max(hs_len)
-        max_col_len = max(col_len)
         B = len(q_len)
         if self.use_bert:
             q_enc = self.q_bert(q_emb_var, q_len)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        col_enc, _ = col_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
+        col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
 
         # get target/predicted column's embedding
         # col_emb: (B, hid_dim)
@@ -65,26 +64,15 @@ class RootTeminalPredictor(nn.Module):
         for b in range(B):
             col_emb.append(col_enc[b, gt_col[b]])
         col_emb = torch.stack(col_emb)
-        att_val_qc = torch.bmm(col_emb.unsqueeze(1), self.q_att(q_enc).transpose(1, 2)).view(B,-1)
-        for idx, num in enumerate(q_len):
-            if num < max_q_len:
-                att_val_qc[idx, num:] = -100
-        att_prob_qc = self.softmax(att_val_qc)
-        q_weighted = (q_enc * att_prob_qc.unsqueeze(2)).sum(1)
+        q_weighted = plain_conditional_weighted_num(self.q_att, q_enc, q_len, col_emb)
 
         # Same as the above, compute SQL history embedding weighted by column attentions
-        att_val_hc = torch.bmm(col_emb.unsqueeze(1), self.hs_att(hs_enc).transpose(1, 2)).view(B,-1)
-        for idx, num in enumerate(hs_len):
-            if num < max_hs_len:
-                att_val_hc[idx, num:] = -100
-        att_prob_hc = self.softmax(att_val_hc)
-        hs_weighted = (hs_enc * att_prob_hc.unsqueeze(2)).sum(1)
+        hs_weighted = plain_conditional_weighted_num(self.hs_att, hs_enc, hs_len, col_emb)
         # rt_score: (B, 2)
         rt_score = self.rt_out(self.rt_out_q(q_weighted) + int(self.use_hs)* self.rt_out_hs(hs_weighted) + self.rt_out_c(col_emb))
-
+        SIZE_CHECK(rt_score, [B, 2])
 
         return rt_score
-
 
     def loss(self, score, truth):
         loss = 0
@@ -95,7 +83,6 @@ class RootTeminalPredictor(nn.Module):
         loss = self.CE(score, truth_var)
 
         return loss
-
 
     def check_acc(self, score, truth):
         err = 0

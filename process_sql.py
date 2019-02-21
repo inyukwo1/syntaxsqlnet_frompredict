@@ -26,7 +26,7 @@
 
 import json
 import sqlite3
-import copy
+import tqdm
 from nltk import word_tokenize
 
 CLAUSE_KEYWORDS = ('select', 'from', 'where', 'group', 'order', 'limit', 'intersect', 'union', 'except')
@@ -65,7 +65,7 @@ class Schema:
     def _map(self, schema):
         idMap = {'*': "__all__"}
         id = 1
-        for key, vals in schema.iteritems():
+        for key, vals in schema.items():
             for val in vals:
                 idMap[key.lower() + "." + val.lower()] = "__" + key.lower() + "." + val.lower() + "__"
                 id += 1
@@ -73,6 +73,43 @@ class Schema:
         for key in schema:
             idMap[key.lower()] = "__" + key.lower() + "__"
             id += 1
+
+        return idMap
+
+
+class SchemaTable:
+    """
+    Simple schema which maps table&column to a unique identifier
+    """
+    def __init__(self, schema, table):
+        self._schema = schema
+        self._table = table
+        self._idMap = self._map(self._schema, self._table)
+
+    @property
+    def schema(self):
+        return self._schema
+
+    @property
+    def idMap(self):
+        return self._idMap
+
+    def _map(self, schema, table):
+        column_names_original = table['column_names_original']
+        table_names_original = table['table_names_original']
+        #print 'column_names_original: ', column_names_original
+        #print 'table_names_original: ', table_names_original
+        for i, (tab_id, col) in enumerate(column_names_original):
+            if tab_id == -1:
+                idMap = {'*': i}
+            else:
+                key = table_names_original[tab_id].lower()
+                val = col.lower()
+                idMap[key + "." + val] = i
+
+        for i, tab in enumerate(table_names_original):
+            key = tab.lower()
+            idMap[key] = i
 
         return idMap
 
@@ -101,17 +138,26 @@ def get_schema(db):
     return schema
 
 
-def get_schema_from_json(fpath):
+def get_schemas_from_json(fpath):
     with open(fpath) as f:
         data = json.load(f)
+    db_names = [db['db_id'] for db in data]
 
-    schema = {}
-    for entry in data:
-        table = str(entry['table'].lower())
-        cols = [str(col['column_name'].lower()) for col in entry['col_data']]
-        schema[table] = cols
+    tables = {}
+    schemas = {}
+    for db in data:
+        db_id = db['db_id']
+        schema = {} #{'table': [col.lower, ..., ]} * -> __all__
+        column_names_original = db['column_names_original']
+        table_names_original = db['table_names_original']
+        tables[db_id] = {'column_names_original': column_names_original, 'table_names_original': table_names_original}
+        for i, tabn in enumerate(table_names_original):
+            table = tabn.lower()
+            cols = [col.lower() for td, col in column_names_original if td == i]
+            schema[table] = cols
+        schemas[db_id] = schema
 
-    return schema
+    return schemas, db_names, tables
 
 
 def tokenize(string):
@@ -551,25 +597,26 @@ def get_sql(schema, query):
 
     return sql
 
-if __name__ == '__main__':
-    # print get_schema('art_1.sqlite')
-    # fpath = '/Users/zilinzhang/Workspace/Github/nl2sql/Data/Initial/table/art_1_table.json'
-    # print schema
 
-    # schema = Schema(get_schema('art_1.sqlite'))
-    # print schema.schema
-    schema = {"paragraphs": ["paragraph_text","paragraph_id", "document_id"], "documents": ["document_id", "document_name"]}
-    schema = Schema(schema)
-    # print schema.idMap
-    data = ["test1"]
-    # data = load_data("/Users/zilinzhang/Workspace/Github/nl2sql/Data/Processed/train/art_1_processed.json")
-    for ix, entry in enumerate(data):
-        # query = entry["query"]
-        # query = "SELECT template_id FROM Templates WHERE template_type_code  =  \"PP\" OR template_type_code  =  \"PPT\""
-        # query = "SELECT count(*) FROM Paragraphs AS T1 JOIN Documents AS T2 ON T1.document_ID  =  T2.document_ID WHERE T2.document_name  =  'Summer Show'"
-        query = "SELECT T1.paragraph_id ,   T1.paragraph_text FROM Paragraphs AS T1 JOIN Documents AS T2 ON T1.document_id  =  T2.document_id WHERE T2.Document_Name  =  'Welcome to NY'"
+if __name__ == '__main__':
+    schemas, dbs, tables = get_schemas_from_json("data/all_tables.json")
+    data = load_data("data/train_all_augmented.json")
+    # entry = data[3451]
+    # query = entry["query"]
+    # schema = schemas[entry["db_id"]]
+    # table = tables[entry["db_id"]]
+    # schema = SchemaTable(schema, table)
+    # toks = tokenize(query)
+    # tables_with_alias = get_tables_with_alias(schema.schema, toks)
+    # _, sql = parse_sql(toks, 0, tables_with_alias, schema)
+    for ix, entry in tqdm.tqdm(enumerate(data)):
+        query = entry["query"]
+        schema = schemas[entry["db_id"]]
+        table = tables[entry["db_id"]]
+        schema = SchemaTable(schema, table)
         toks = tokenize(query)
         tables_with_alias = get_tables_with_alias(schema.schema, toks)
         _, sql = parse_sql(toks, 0, tables_with_alias, schema)
-        print(sql)
-        break
+        data[ix]["sql"] = sql
+    with open("data/train_all_augmented_filtered.json", "w") as f:
+        json.dump(data, f, sort_keys=True, indent=4, separators=(',', ': '))

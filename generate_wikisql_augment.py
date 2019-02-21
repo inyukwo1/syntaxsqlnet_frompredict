@@ -439,9 +439,9 @@ def generate_every_db(db):
                 sql, questions = pattern.populate()
                 #for q in questions:
                 if len(questions) != 0:
-                    f.write("{}. {}\n".format(1,random.choice(questions).encode("utf8")))
+                    f.write("{}. {}\n".format(1,random.choice(questions)))
                     f.write("P:\n\n")
-                    f.write("{}\n\n".format(sql.encode("utf8")))
+                    f.write("{}\n\n".format(sql))
                 idx += 1
             except:
                 pass

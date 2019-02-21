@@ -18,4 +18,4 @@ def merge_files(f1, f2, output_file):
 
 
 
-merge_files("/data/projects/nl2sql/datasets/data_add_wikisql/wikisql_tables.json", "/data/projects/nl2sql/datasets/data/tables.json", "/data/projects/nl2sql/datasets/data_add_wikisql/all_tables.json")
+merge_files("data/train_all.json", "data/augmented.json", "data/train_all_augmented.json")

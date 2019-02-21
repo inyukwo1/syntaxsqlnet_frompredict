@@ -18,18 +18,20 @@ class AndOrPredictor(nn.Module):
         self.use_bert = True if bert else False
         if bert:
             self.q_bert = bert
+            encoded_num = 768
         else:
             self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
+            encoded_num = N_h
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.q_att = nn.Linear(768, N_h)
+        self.q_att = nn.Linear(encoded_num, N_h)
         self.hs_att = nn.Linear(N_h, N_h)
-        self.ao_out_q = nn.Linear(768, N_h)
+        self.ao_out_q = nn.Linear(encoded_num, N_h)
         self.ao_out_hs = nn.Linear(N_h, N_h)
         self.ao_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 2)) #for and/or
 

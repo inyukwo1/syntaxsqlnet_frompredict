@@ -6,14 +6,16 @@ import json
 import sys
 from collections import defaultdict
 
-###TODO: change dirs
-train_data_path = "./data/train_spider.json"
-table_data_path = "./data/tables.json"
-
 train_dev = "train"
 if len(sys.argv) > 1:
     train_dev = sys.argv[1]
-train_data = json.load(open(train_data_path))
+###TODO: change dirs
+if train_dev == "train":
+    data_path = "./data/train_all_augmented_filtered.json"
+else:
+    data_path = "./data/dev.json"
+table_data_path = "./data/all_tables.json"
+train_data = json.load(open(data_path))
 history_option = "full"
 if len(sys.argv) > 2:
     history_option = sys.argv[2]
@@ -257,7 +259,8 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
     table_schema = [
         table["table_names"],
         table["column_names"],
-        table["column_types"]
+        table["column_types"],
+        table["foreign_keys"]
     ]
     stack = [("root",sql)]
     with_join = False
@@ -294,16 +297,25 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
             join_conds = node[1]["from"]["conds"]
             join_cols_list = []
             for cond in join_conds:
+                if cond == 'and':
+                    continue
                 join_cols_list.append(cond[2][1][1])
                 join_cols_list.append(cond[3][1])
             join_table_dict = dict()
+            for table_num in table_list:
+                if type(table_num) is dict:
+                    print("WRONG2") # nested query is in from clause
+                    return
+                join_table_dict[table_num] = set()
             for col in join_cols_list:
                 parent_table = table["column_names"][col][0]
                 if parent_table not in join_table_dict:
-                    join_table_dict[parent_table] = set()
-                join_table_dict[parent_table].add(col)
-            for table in join_table_dict:
-                join_table_dict[table] = list(join_table_dict[table])
+                    print("WRONG111111") #syntaxsqlnet bug - parsing bug
+                    return
+                else:
+                    join_table_dict[parent_table].add(col)
+            for table_unit in join_table_dict:
+                join_table_dict[table_unit] = list(join_table_dict[table_unit])
             dataset['from_dataset'].append({
                 "question_tokens": question_tokens,
                 "ts": table_schema,
@@ -675,7 +687,7 @@ def parse_data(data):
     print("finished preprocess")
     for key in dataset:
         print(("dataset:{} size:{}".format(key, len(dataset[key]))))
-        json.dump(dataset[key], open("./generated_data/{}_{}_{}.json".format(history_option,train_dev, key), "w"), indent=2)
+        json.dump(dataset[key], open("./generated_datasets/generated_data_augment_from/{}_{}_{}.json".format(history_option,train_dev, key), "w"), indent=2)
 
 
 if __name__ == '__main__':

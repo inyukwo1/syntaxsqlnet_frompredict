@@ -4,8 +4,8 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from models.net_utils import run_lstm, col_name_encode, encode_question
-from pytorch_pretrained_bert import BertModel
+from models.net_utils import run_lstm, col_tab_name_encode, seq_conditional_weighted_num, SIZE_CHECK
+
 
 class ColPredictor(nn.Module):
     def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert=None):
@@ -17,10 +17,12 @@ class ColPredictor(nn.Module):
         self.use_bert = True if bert else False
         if bert:
             self.q_bert = bert
+            encoded_num = 768
         else:
             self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
+            encoded_num = N_h
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
@@ -30,15 +32,15 @@ class ColPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.q_num_att = nn.Linear(768, N_h)
+        self.q_num_att = nn.Linear(encoded_num, N_h)
         self.hs_num_att = nn.Linear(N_h, N_h)
-        self.col_num_out_q = nn.Linear(768, N_h)
+        self.col_num_out_q = nn.Linear(encoded_num, N_h)
         self.col_num_out_hs = nn.Linear(N_h, N_h)
         self.col_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 6)) # num of cols: 1-3
 
-        self.q_att = nn.Linear(768, N_h)
+        self.q_att = nn.Linear(encoded_num, N_h)
         self.hs_att = nn.Linear(N_h, N_h)
-        self.col_out_q = nn.Linear(768, N_h)
+        self.col_out_q = nn.Linear(encoded_num, N_h)
         self.col_out_c = nn.Linear(N_h, N_h)
         self.col_out_hs = nn.Linear(N_h, N_h)
         self.col_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 1))
@@ -63,51 +65,23 @@ class ColPredictor(nn.Module):
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        col_enc, _ = col_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
+        col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
 
         # Predict column number: 1-3
-        # att_val_qc_num: (B, max_col_len, max_q_len)
-        att_val_qc_num = torch.bmm(col_enc, self.q_num_att(q_enc).transpose(1, 2))
-        for idx, num in enumerate(col_len):
-            if num < max_col_len:
-                att_val_qc_num[idx, num:, :] = -100
-        for idx, num in enumerate(q_len):
-            if num < max_q_len:
-                att_val_qc_num[idx, :, num:] = -100
-        att_prob_qc_num = self.softmax(att_val_qc_num.view((-1, max_q_len))).view(B, -1, max_q_len)
-        # q_weighted_num: (B, hid_dim)
-        q_weighted_num = (q_enc.unsqueeze(1) * att_prob_qc_num.unsqueeze(3)).sum(2).sum(1)
+        q_weighted_num = seq_conditional_weighted_num(self.q_num_att, q_enc, q_len, col_enc, col_len).sum(1)
+        SIZE_CHECK(q_weighted_num, [B, self.N_h])
 
         # Same as the above, compute SQL history embedding weighted by column attentions
-        # att_val_hc_num: (B, max_col_len, max_hs_len)
-        att_val_hc_num = torch.bmm(col_enc, self.hs_num_att(hs_enc).transpose(1, 2))
-        for idx, num in enumerate(hs_len):
-            if num < max_hs_len:
-                att_val_hc_num[idx, :, num:] = -100
-        for idx, num in enumerate(col_len):
-            if num < max_col_len:
-                att_val_hc_num[idx, num:, :] = -100
-        att_prob_hc_num = self.softmax(att_val_hc_num.view((-1, max_hs_len))).view(B, -1, max_hs_len)
-        hs_weighted_num = (hs_enc.unsqueeze(1) * att_prob_hc_num.unsqueeze(3)).sum(2).sum(1)
+        hs_weighted_num = seq_conditional_weighted_num(self.hs_num_att, hs_enc, hs_len, col_enc, col_len).sum(1)
+        SIZE_CHECK(hs_weighted_num, [B, self.N_h])
         # self.col_num_out: (B, 3)
-        col_num_score = self.col_num_out(self.col_num_out_q(q_weighted_num) + int(self.use_hs)* self.col_num_out_hs(hs_weighted_num))
+        col_num_score = self.col_num_out(self.col_num_out_q(q_weighted_num) + int(self.use_hs) * self.col_num_out_hs(hs_weighted_num))
 
         # Predict columns.
-        att_val_qc = torch.bmm(col_enc, self.q_att(q_enc).transpose(1, 2))
-        for idx, num in enumerate(q_len):
-            if num < max_q_len:
-                att_val_qc[idx, :, num:] = -100
-        att_prob_qc = self.softmax(att_val_qc.view((-1, max_q_len))).view(B, -1, max_q_len)
-        # q_weighted: (B, max_col_len, hid_dim)
-        q_weighted = (q_enc.unsqueeze(1) * att_prob_qc.unsqueeze(3)).sum(2)
+        q_weighted = seq_conditional_weighted_num(self.q_att, q_enc, q_len, col_enc)
 
         # Same as the above, compute SQL history embedding weighted by column attentions
-        att_val_hc = torch.bmm(col_enc, self.hs_att(hs_enc).transpose(1, 2))
-        for idx, num in enumerate(hs_len):
-            if num < max_hs_len:
-                att_val_hc[idx, :, num:] = -100
-        att_prob_hc = self.softmax(att_val_hc.view((-1, max_hs_len))).view(B, -1, max_hs_len)
-        hs_weighted = (hs_enc.unsqueeze(1) * att_prob_hc.unsqueeze(3)).sum(2)
+        hs_weighted = seq_conditional_weighted_num(self.hs_att, hs_enc, hs_len, col_enc)
         # Compute prediction scores
         # self.col_out.squeeze(): (B, max_col_len)
         col_score = self.col_out(self.col_out_q(q_weighted) + int(self.use_hs)* self.col_out_hs(hs_weighted) + self.col_out_c(col_enc)).view(B,-1)

@@ -2,6 +2,58 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.autograd import Variable
+import torch.nn.functional as F
+
+
+def SIZE_CHECK(tensor, size):
+    for idx, dim in enumerate(size):
+        if dim is None:
+            size[idx] = list(tensor.size())[idx]
+    assert list(tensor.size()) == size
+
+
+def seq_conditional_weighted_num(attention_layer, predicate_tensor, predicate_len, conditional_tensor,
+                                 conditional_len=None):
+    max_predicate_len = max(predicate_len)
+    if conditional_len is not None:
+        max_conditional_len = max(conditional_len)
+    else:
+        max_conditional_len = None
+    B = len(predicate_len)
+    SIZE_CHECK(predicate_tensor, [B, max_predicate_len, None])
+    SIZE_CHECK(conditional_tensor, [B, max_conditional_len, None])
+    co_attention = torch.bmm(conditional_tensor, attention_layer(predicate_tensor).transpose(1, 2))
+    SIZE_CHECK(co_attention, [B, max_conditional_len, max_predicate_len])
+    for idx, num in enumerate(predicate_len):
+        if num < max_predicate_len:
+            co_attention[idx, :, num:] = -100
+    if conditional_len is not None:
+        for idx, num in enumerate(conditional_len):
+            if num < max_conditional_len:
+                co_attention[idx, num:, :] = -100
+    softmaxed_attention = F.softmax(co_attention.view(-1, max_predicate_len), dim=1)\
+        .view(B, -1, max_predicate_len)
+    weighted = (predicate_tensor.unsqueeze(1) * softmaxed_attention.unsqueeze(3)).sum(2)
+    SIZE_CHECK(weighted, [B, None, None])
+    return weighted
+
+
+def plain_conditional_weighted_num(att, predicate_tensor, predicate_len, conditional_tensor):
+    max_predicate_len = max(predicate_len)
+    B = len(predicate_len)
+
+    SIZE_CHECK(predicate_tensor, [B, max_predicate_len, None])
+    SIZE_CHECK(conditional_tensor, [B, None])
+
+    co_attention = torch.bmm(conditional_tensor.unsqueeze(1), att(predicate_tensor).transpose(1, 2))\
+        .view(B, max_predicate_len)
+    for idx, num in enumerate(predicate_len):
+        if num < max_predicate_len:
+            co_attention[idx, num:] = -100
+    co_attention = F.softmax(co_attention, dim=1)
+    weighted = (predicate_tensor * co_attention.unsqueeze(2))
+    weighted = weighted.sum(1)
+    return weighted
 
 
 def encode_question(bert, inp, inp_len):
@@ -41,7 +93,7 @@ def run_lstm(lstm, inp, inp_len, hidden=None):
     return ret_s, ret_h
 
 
-def col_name_encode(name_inp_var, name_len, col_len, enc_lstm):
+def col_tab_name_encode(name_inp_var, name_len, col_len, enc_lstm):
     #Encode the columns.
     #The embedding of a column name is the last state of its LSTM output.
     name_hidden, _ = run_lstm(enc_lstm, name_inp_var, name_len)
