@@ -3,7 +3,7 @@
 # ## full + aug
  hs=full
  tbl=std
- d_type="_augment"
+ d_type="_augment_from"
 
 # ## - aug
 #hs=full
