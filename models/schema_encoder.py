@@ -99,17 +99,12 @@ class NGCNLayer(nn.Module):
 class SchemaAggregator(nn.Module):
     def __init__(self, hidden_dim):
         super(SchemaAggregator, self).__init__()
-        self.aggregator = nn.Linear(hidden_dim, hidden_dim)
+        self.aggregator = NGCNLayer(hidden_dim, hidden_dim, 6)
 
     def forward(self, bg):
-        graph_list = bg.unbatch()
-        ret = []
-        for graph in graph_list:
-            x = self.aggregator(graph.ndata['h'])
-            x = x.sum(0)
-            ret.append(x)
-        ret = torch.stack(ret)
-        return ret
+        self.aggregator(bg)
+        return dgl.mean_nodes(bg, 'h')
+
 
 class SchemaEncoder(nn.Module):
     def __init__(self, hidden_dim):

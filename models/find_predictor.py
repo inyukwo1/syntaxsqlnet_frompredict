@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
 from pytorch_pretrained_bert import BertModel
-from models.schema_encoder import SchemaEncoder
+from models.schema_encoder import SchemaEncoder, SchemaAggregator
 
 
 class FindPredictor(nn.Module):
@@ -31,18 +31,20 @@ class FindPredictor(nn.Module):
                 dropout=0.3, bidirectional=True)
 
         self.schema_encoder = SchemaEncoder(N_h)
+        self.schema_aggregator = SchemaAggregator(N_h)
 
         self.q_table_att = nn.Linear(self.encoded_num, N_h)
         self.q_col_att = nn.Linear(self.encoded_num, N_h)
         self.hs_table_att = nn.Linear(N_h, N_h)
         self.hs_col_att = nn.Linear(N_h, N_h)
 
+        self.schema_out = nn.Linear(N_h, N_h)
         self.q_table_out = nn.Linear(N_h, N_h)
         self.q_col_out = nn.Linear(N_h, N_h)
         self.hs_table_out = nn.Linear(N_h, N_h)
         self.hs_col_out = nn.Linear(N_h, N_h)
 
-        self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h))
+        self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
 
         if gpu:
             self.cuda()
@@ -64,6 +66,7 @@ class FindPredictor(nn.Module):
         table_tensors, col_tensors, batch_graph = self.schema_encoder(parent_tables, foreign_keys,
                                                                       col_emb_var, col_name_len, col_len,
                                                                       table_emb_var, table_name_len, table_len)
+        aggregated_schema = self.schema_aggregator(batch_graph)
         SIZE_CHECK(table_tensors, [B, max_table_len, self.N_h])
         SIZE_CHECK(col_tensors, [B, max_col_len, self.N_h])
 
@@ -72,7 +75,8 @@ class FindPredictor(nn.Module):
         q_col_weighted_num = seq_conditional_weighted_num(self.q_col_att, q_enc, q_len, col_tensors, col_len).sum(1)
         hs_col_weighted_num = seq_conditional_weighted_num(self.hs_col_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
 
-        x = self.q_table_out(q_table_weighted_num)
+        x = self.schema_out(F.relu(aggregated_schema))
+        x = x + self.q_table_out(q_table_weighted_num)
         x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num)
         x = x + self.q_col_out(q_col_weighted_num)
         x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num)
