@@ -30,7 +30,7 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.schema_encoder = SchemaEncoder(N_h)
+        self.schema_encoder = SchemaEncoder(N_h, 40)
         self.schema_aggregator = SchemaAggregator(N_h)
 
         self.q_table_att = nn.Linear(self.encoded_num, N_h)
@@ -109,14 +109,17 @@ class FindPredictor(nn.Module):
         err = 0
         score = F.sigmoid(score)
         B = len(truth)
+        pred = []
         if self.gpu:
-            score = score.cpu()
-        score = score.data.numpy()
+            score = [sc.data.cpu().numpy() for sc in score]
+        else:
+            score = [sc.data.numpy() for sc in score]
         threshold = 0.5
         for b in range(B):
-            if score[b] > threshold and str(b) not in truth[b]:
-                err += 1
-            if score[b] <= threshold and str(b) in truth[b]:
-                err += 1
+            for entry in range(len(score[b])):
+                if score[b][entry] > threshold and str(entry) not in truth[b]:
+                    err += 1
+                if score[b][entry] <= threshold and str(entry) in truth[b]:
+                    err += 1
 
         return np.array(err)
