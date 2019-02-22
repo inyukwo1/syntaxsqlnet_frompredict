@@ -92,7 +92,6 @@ class NGCNLayer(nn.Module):
             if self.activation:
                 h = self.activation(h)
             return {'h': h}
-
         bg.update_all(message_func, fn.sum(msg='msg', out='h'), apply_func)
 
 
@@ -142,9 +141,10 @@ class SchemaEncoder(nn.Module):
         # (batch size, max seq len, hidden)
         b, max_col_len, hidden_dim = list(origin_batch_col_enc.size())
         b, max_tab_len, hidden_dim = list(origin_batch_tab_enc.size())
-        bg_origin  = batch_table_to_dgl_batch_graph(batch_par_tab_nums, batch_foreign_keys, origin_batch_col_enc, origin_batch_tab_enc)
+        bg_origin = batch_table_to_dgl_batch_graph(batch_par_tab_nums, batch_foreign_keys, origin_batch_col_enc, origin_batch_tab_enc)
         bg = batch_table_to_dgl_batch_graph(batch_par_tab_nums, batch_foreign_keys, batch_col_enc, batch_tab_enc)
         origin_ndata = bg_origin.ndata['h']
+        print(origin_ndata.cpu().numpy())
         self.layer1(bg)
         self.layer2(bg)
         self.layer3(bg)
@@ -163,14 +163,7 @@ class SchemaEncoder(nn.Module):
         col_tensors = self.upper(col_tensors) + self.skipper(origin_batch_col_enc)
         bg.ndata['h'] = self.upper(bg.ndata['h']) + self.skipper(origin_ndata)
         return table_tensors, col_tensors, bg
-    #
-    # def forward(self, batch_par_tab_nums, batch_foreign_keys,
-    #             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len):
-    #     origin_batch_col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
-    #     origin_batch_tab_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.col_lstm)
-    #     bg = batch_table_to_dgl_batch_graph(batch_par_tab_nums, batch_foreign_keys, origin_batch_col_enc, origin_batch_tab_enc)
-    #
-    #     return origin_batch_tab_enc, origin_batch_col_enc, bg
+
 
 
 

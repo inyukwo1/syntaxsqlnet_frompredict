@@ -46,22 +46,35 @@ class FindPredictor(nn.Module):
 
         self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
 
-        if gpu:
-            self.cuda()
-
     def forward(self, parent_tables, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len,
-                table_emb_var, table_len, table_name_len):
-
+                table_emb_var, table_len, table_name_len, batch_nums):
         max_q_len = max(q_len)
         max_hs_len = max(hs_len)
         max_col_len = max(col_len)
         max_table_len = max(table_len)
+
+        batch_nums = batch_nums.cpu().numpy().tolist()
+        parent_tables = [parent_tables[i] for i in batch_nums]
+        foreign_keys = [foreign_keys[i] for i in batch_nums]
+        q_len = q_len[batch_nums]
+        hs_len = hs_len[batch_nums]
+        col_len = col_len[batch_nums]
+        col_name_len = col_name_len[batch_nums]
+        table_len = table_len[batch_nums]
+        table_name_len = table_name_len[batch_nums]
+
         B = len(q_len)
+        print("batch size:::{}".format(B), flush=True)
+        print("emb size:::{}".format(list(q_emb_var.size())), flush=True)
         if self.use_bert:
             q_enc = self.q_bert(q_emb_var, q_len)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
-        assert list(q_enc.size()) == [B, max_q_len, self.encoded_num]
+        padding = torch.zeros(B, max_q_len - max(q_len), self.encoded_num)
+        if torch.cuda.is_available():
+            padding = padding.cuda()
+        q_enc = torch.cat([q_enc, padding], dim=1)
+        SIZE_CHECK(q_enc, [B, max_q_len, self.encoded_num])
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         table_tensors, col_tensors, batch_graph = self.schema_encoder(parent_tables, foreign_keys,
                                                                       col_emb_var, col_name_len, col_len,
@@ -87,10 +100,10 @@ class FindPredictor(nn.Module):
         for idx, num in enumerate(table_len.tolist()):
             if num < max_table_len:
                 table_score[idx, num:] = -100
-
         return table_score
 
-    def loss(self, score, truth):
+    @staticmethod
+    def loss(score, truth):
         B = len(truth)
         SIZE_CHECK(score, [B, None])
         max_table_len = list(score.size())[1]
@@ -99,18 +112,19 @@ class FindPredictor(nn.Module):
             label.append([1. if str(i) in one_truth else 0. for i in range(max_table_len)])
 
         label = torch.from_numpy(np.array(label)).type(torch.FloatTensor)
-        if self.gpu:
+        if torch.cuda.is_available():
             label = label.cuda()
         label = Variable(label)
         loss = F.binary_cross_entropy_with_logits(score, label)
         return loss
 
-    def check_acc(self, score, truth):
+    @staticmethod
+    def check_acc(score, truth):
         err = 0
         score = F.sigmoid(score)
         B = len(truth)
         pred = []
-        if self.gpu:
+        if torch.cuda.is_available():
             score = [sc.data.cpu().numpy() for sc in score]
         else:
             score = [sc.data.numpy() for sc in score]

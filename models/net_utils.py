@@ -9,19 +9,20 @@ def SIZE_CHECK(tensor, size):
     for idx, dim in enumerate(size):
         if dim is None:
             size[idx] = list(tensor.size())[idx]
-    assert list(tensor.size()) == size
+    if list(tensor.size()) != size:
+        print("expected size: {}".format(size), flush=True)
+        print("actual size: {}".format(list(tensor.size())), flush=True)
+        raise AssertionError
 
 
 def seq_conditional_weighted_num(attention_layer, predicate_tensor, predicate_len, conditional_tensor,
                                  conditional_len=None):
-    max_predicate_len = max(predicate_len)
     if conditional_len is not None:
-        max_conditional_len = max(conditional_len)
+        _, max_conditional_len, _ = list(conditional_tensor.size())
     else:
         max_conditional_len = None
     B = len(predicate_len)
-    SIZE_CHECK(predicate_tensor, [B, max_predicate_len, None])
-    SIZE_CHECK(conditional_tensor, [B, max_conditional_len, None])
+    _, max_predicate_len, _ = list(predicate_tensor.size())
     co_attention = torch.bmm(conditional_tensor, attention_layer(predicate_tensor).transpose(1, 2))
     SIZE_CHECK(co_attention, [B, max_conditional_len, max_predicate_len])
     for idx, num in enumerate(predicate_len):
@@ -96,10 +97,22 @@ def run_lstm(lstm, inp, inp_len, hidden=None):
 def col_tab_name_encode(name_inp_var, name_len, col_len, enc_lstm):
     #Encode the columns.
     #The embedding of a column name is the last state of its LSTM output.
-    name_hidden, _ = run_lstm(enc_lstm, name_inp_var, name_len)
-    name_out = name_hidden[tuple(range(len(name_len))), name_len-1]
+    B = len(col_len)
+    SIZE_CHECK(name_inp_var, [B, None, None, None])
+    _, max_batch_len, max_seq_len, hidden_dim = list(name_inp_var.size())
+    new_name_inp_var = []
+    new_name_len = np.zeros(sum(col_len), dtype=int)
+    st = 0
+    for b, one_col_len in enumerate(col_len):
+        new_name_inp_var.append(name_inp_var[b, :one_col_len])
+        new_name_len[st:st+one_col_len] = name_len[b, :one_col_len]
+        st += one_col_len
+    new_name_inp_var = torch.cat(new_name_inp_var, dim=0)
+    SIZE_CHECK(new_name_inp_var, [sum(col_len), max_seq_len, hidden_dim])
+    name_hidden, _ = run_lstm(enc_lstm, new_name_inp_var, new_name_len)
+    name_out = name_hidden[tuple(range(len(new_name_len))), new_name_len-1]
     ret = torch.FloatTensor(
-            len(col_len), max(col_len), name_out.size()[1]).zero_()
+            len(col_len), max_batch_len, name_out.size()[1]).zero_()
     if name_out.is_cuda:
         ret = ret.cuda()
 
@@ -110,4 +123,4 @@ def col_tab_name_encode(name_inp_var, name_len, col_len, enc_lstm):
     ret_var = Variable(ret)
 
     return ret_var, col_len
-    
+
