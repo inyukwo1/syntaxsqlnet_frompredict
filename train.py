@@ -113,6 +113,10 @@ if __name__ == '__main__':
         model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "from":
         model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+    print("multiple gpu: {}".format( torch.cuda.device_count()))
+    model = torch.nn.DataParallel(model)
+    if torch.cuda.is_available():
+        model.cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
         optimizer_bert = torch.optim.Adam(bert_model.parameters(), lr=bert_learning_rate)

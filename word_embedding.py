@@ -160,13 +160,13 @@ class WordEmbedding(nn.Module):
 
         names = []
         for b, one_cols in enumerate(cols):
-            names = names + one_cols
+            names = names + [one_cols]
             col_len[b] = len(one_cols)
         name_inp_var, name_len = self.str_list_to_batch(names)
 
         table_names = []
         for b, one_tables in enumerate(tables):
-            table_names = table_names + one_tables
+            table_names = table_names + [one_tables]
             tab_len[b] = len(one_tables)
         table_name_inp_var, table_name_len = self.str_list_to_batch(table_names)
         return name_inp_var, name_len, col_len, table_name_inp_var, table_name_len, tab_len
@@ -174,24 +174,30 @@ class WordEmbedding(nn.Module):
     def str_list_to_batch(self, str_list):
         """get a list var of wemb of words in each column name in current bactch"""
         B = len(str_list)
+        batch_len_strs = [len(one_str) for one_str in str_list]
+        max_batch_len_str = max(batch_len_strs)
 
         val_embs = []
-        val_len = np.zeros(B, dtype=np.int64)
-        for i, one_str in enumerate(str_list):
-            if self.trainable:
-                val = [self.w2i.get(x, 0) for x in one_str]
-            else:
-                val = [self.word_emb.get(x, np.zeros(
-                    self.N_word, dtype=np.float32)) for x in one_str]
-            val_embs.append(val)
-            val_len[i] = len(val)
-        max_len = max(val_len)
+        val_len = np.zeros((B, max_batch_len_str), dtype=np.int64)
+        for b in range(B):
+            val_embs_one_batch = []
+            for i, one_str in enumerate(str_list[b]):
+                if self.trainable:
+                    val = [self.w2i.get(x, 0) for x in one_str]
+                else:
+                    val = [self.word_emb.get(x, np.zeros(
+                        self.N_word, dtype=np.float32)) for x in one_str]
+                val_embs_one_batch.append(val)
+                val_len[b][i] = len(val)
+            val_embs.append(val_embs_one_batch)
+        max_len = np.max(val_len)
 
         if self.trainable:
-            val_tok_array = np.zeros((B, max_len), dtype=np.int64)
+            val_tok_array = np.zeros((B, max_batch_len_str, max_len), dtype=np.int64)
             for i in range(B):
                 for t in range(len(val_embs[i])):
-                    val_tok_array[i,t] = val_embs[i][t]
+                    for k in range(len(val_embs[i][t])):
+                        val_tok_array[i, t, k] = val_embs[i][t][k]
             val_tok = torch.from_numpy(val_tok_array)
             if self.gpu:
                 val_tok = val_tok.cuda()
@@ -199,10 +205,11 @@ class WordEmbedding(nn.Module):
             val_inp_var = self.embedding(val_tok_var)
         else:
             val_emb_array = np.zeros(
-                    (B, max_len, self.N_word), dtype=np.float32)
+                    (B, max_batch_len_str, max_len, self.N_word), dtype=np.float32)
             for i in range(B):
                 for t in range(len(val_embs[i])):
-                    val_emb_array[i,t,:] = val_embs[i][t]
+                    for k in range(len(val_embs[i][t])):
+                        val_emb_array[i,t,k,:] = val_embs[i][t][k]
             val_inp = torch.from_numpy(val_emb_array)
             if self.gpu:
                 val_inp = val_inp.cuda()

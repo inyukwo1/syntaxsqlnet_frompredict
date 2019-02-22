@@ -5,7 +5,9 @@ import numpy as np
 import os
 import signal
 from preprocess_train_dev_data import get_table_dict
+from models.find_predictor import FindPredictor
 import tqdm
+import torch
 
 
 def load_train_dev_dataset(component,train_dev,history, root):
@@ -162,9 +164,13 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
+            batch_nums = torch.tensor(range(len(col_len)))
             score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
-                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
-        loss = model.loss(score, label)
+                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len, batch_nums)
+        if component == "from":
+            loss = FindPredictor.loss(score, label)
+        else:
+            loss = model.loss(score, label)
         # print("loss {}".format(loss.data.cpu().numpy()))
         if gpu:
             cum_loss += loss.data.cpu().numpy()*(ed - st)
@@ -291,17 +297,22 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
+            batch_nums = torch.tensor(range(len(col_len)))
             score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
-                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
+                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len, batch_nums)
         # print("label {}".format(label))
         if component in ("agg","col","keyword","op"):
             num_err, p_err, err = model.check_acc(score, label)
             total_number_error += num_err
             total_p_error += p_err
             total_error += err
+        elif component =="from":
+            err = FindPredictor.check_acc(score, label)
+            total_error += err
         else:
             err = model.check_acc(score, label)
             total_error += err
+
         st = ed
 
     if component in ("agg","col","keyword","op"):
