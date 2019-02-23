@@ -59,6 +59,20 @@ def to_batch_tables(data, idxes, st,ed, table_type):
 
     return col_seq, tname_seqs, par_tnum_seqs, foreign_keys
 
+
+def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
+    # col_lens = []
+    from_candidates = []
+    for idx, i in enumerate(range(st, ed)):
+        table_candidate = data[idxes[i]]["from"]
+        col_candidates = [0]
+        for col, par in enumerate(par_tab_nums[idx]):
+            if str(par) in table_candidate:
+                col_candidates.append(col)
+        from_candidates.append(col_candidates)
+
+    return from_candidates
+
 ## used for training in train.py
 def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert):
     model.train()
@@ -88,8 +102,9 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             #col word embedding
             # [[0,1,3]]
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            from_candidates = to_batch_from_candidates(par_tab_nums, data, perm, st, ed)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
-            score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len)
+            score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, from_candidates)
 
         elif component == "op":
             #B*index
@@ -218,8 +233,9 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             #col word embedding
             # [[0,1,3]]
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            from_candidates = to_batch_from_candidates(par_tab_nums, data, perm, st, ed)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
-            score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len)
+            score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, from_candidates)
         elif component == "op":
             #B*index
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)

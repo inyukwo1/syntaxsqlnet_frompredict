@@ -54,7 +54,7 @@ class ColPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len):
+    def forward(self, q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, col_candidates):
 
         max_q_len = max(q_len)
         max_hs_len = max(hs_len)
@@ -89,6 +89,9 @@ class ColPredictor(nn.Module):
         for idx, num in enumerate(col_len):
             if num < max_col_len:
                 col_score[idx, num:] = -100
+            for col_num in range(num):
+                if col_num not in col_candidates[idx]:
+                    col_score[idx, col_num] = -100
 
         score = (col_num_score, col_score)
 

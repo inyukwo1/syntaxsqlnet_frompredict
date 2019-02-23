@@ -6,7 +6,7 @@ import json
 import sys
 from collections import defaultdict
 
-train_dev = "train"
+train_dev = "dev"
 if len(sys.argv) > 1:
     train_dev = sys.argv[1]
 ###TODO: change dirs
@@ -334,9 +334,9 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                 "label": label_idxs
             })
             if "having" in label[1]:
-                stack.append(("having",node[1]))
+                stack.append(("having",node[1], join_table_dict))
             if "orderBy" in label[1]:
-                stack.append(("orderBy",node[1]))
+                stack.append(("orderBy",node[1], join_table_dict))
             if "groupBy" in label[1]:
                 if "having" in label[1]:
                     dataset['having_dataset'].append({
@@ -354,11 +354,11 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                         "gt_col":node[1]["groupBy"][0][1],
                         "label": 0
                     })
-                stack.append(("groupBy",node[1]))
+                stack.append(("groupBy",node[1], join_table_dict))
             if "where" in label[1]:
-                stack.append(("where",node[1]))
+                stack.append(("where",node[1], join_table_dict))
             if "select" in label[1]:
-                stack.append(("select",node[1]))
+                stack.append(("select",node[1], join_table_dict))
         elif node[0] in ("select","having","orderBy"):
             # if node[0] != "orderBy":
             history.append(node[0])
@@ -384,6 +384,7 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                     "question_tokens": question_tokens,
                     "ts": table_schema,
                     "history": history[:],
+                    "from": node[2],
                     "label":get_label_cols(with_join,fk_dict,l[1])
                 })
                 for col, sql_item in zip(l[1], s):
@@ -484,6 +485,7 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                     "question_tokens": question_tokens,
                     "ts": table_schema,
                     "history": history[:],
+                    "from": node[2],
                     "label": get_label_cols(with_join,fk_dict,l[1])
                 })
                 for col, sql_item in zip(l[1], s):
@@ -506,6 +508,7 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                     "question_tokens": question_tokens,
                     "ts": table_schema,
                     "history": history[:],
+                    "from": node[2],
                     "label": get_label_cols(with_join,fk_dict,l[1])
                 })
                 for col, sql_item in zip(l[1], s):
