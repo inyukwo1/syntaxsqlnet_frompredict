@@ -93,7 +93,7 @@ class OpPredictor(nn.Module):
         # Compute prediction scores
         # op_score: (B, 10)
         op_score = self.op_out(self.op_out_q(q_weighted) + int(self.use_hs)* self.op_out_hs(hs_weighted) + self.op_out_c(col_emb))
-        SIZE_CHECK(op_score, [B, 10])
+        SIZE_CHECK(op_score, [B, 11])
 
         score = (op_num_score, op_score)
 

@@ -68,6 +68,7 @@ if __name__ == '__main__':
     model.root_teminal.load_state_dict(torch.load("{}/root_tem_models.dump".format(args.models)))
     model.des_asc.load_state_dict(torch.load("{}/des_asc_models.dump".format(args.models)))
     model.having.load_state_dict(torch.load("{}/having_models.dump".format(args.models)))
+    model.from_table.load_state_dict(torch.load("{}/from_models.dump".format(args.models)))
 
     test_acc(model, BATCH_SIZE, data, args.output_path)
     #test_exec_acc()

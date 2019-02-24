@@ -1,17 +1,17 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=4
 TEST_DATA=data/dev.json
 
 # # full + aug
-SAVE_PATH=generated_datasets/generated_data_augment/saved_models
+SAVE_PATH=generated_datasets/generated_data_augment_from/saved_models
 python test.py \
     --test_data_path  ${TEST_DATA} \
     --models          ${SAVE_PATH} \
     --output_path     ${SAVE_PATH}/dev_result.txt \
     --history_type    full \
     --table_type      std \
-     > ${SAVE_PATH}/dev_result.out.txt 2>&1 &
+     > ${SAVE_PATH}/dev_result.out.txt &
 
 
 ## - aug

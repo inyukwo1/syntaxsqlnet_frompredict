@@ -6,6 +6,9 @@ import os
 import signal
 from preprocess_train_dev_data import get_table_dict
 import tqdm
+import pandas as pd
+import os.path
+import pickle
 
 
 def load_train_dev_dataset(component,train_dev,history, root):
@@ -355,16 +358,23 @@ def test_acc(model, batch_size, data,output_path):
 
 def load_word_emb(file_name, load_used=False, use_small=False):
     if not load_used:
-        print(('Loading word embedding from %s'%file_name))
-        ret = {}
-        with open(file_name) as inf:
-            for idx, line in enumerate(inf):
-                if (use_small and idx >= 5000):
-                    break
-                info = line.strip().split(' ')
-                if info[0].lower() not in ret:
-                    ret[info[0]] = np.array([float(x) for x in info[1:]])
-        return ret
+        cached_file_path = file_name + ".cache"
+        if os.path.isfile(cached_file_path):
+            with open(cached_file_path, 'rb') as f:
+                return pickle.load(f)
+        else:
+            print(('Loading word embedding from %s'%file_name))
+            ret = {}
+            with open(file_name) as inf:
+                for idx, line in enumerate(inf):
+                    if (use_small and idx >= 5000):
+                        break
+                    info = line.strip().split(' ')
+                    if info[0].lower() not in ret:
+                        ret[info[0]] = np.array([float(x) for x in info[1:]])
+            with open(cached_file_path, 'wb') as f:
+                pickle.dump(ret, f)
+            return ret
     else:
         print ('Load used word embedding')
         with open('../alt/glove/word2idx.json') as inf:

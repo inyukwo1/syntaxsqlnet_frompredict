@@ -31,6 +31,9 @@ class WordEmbedding(nn.Module):
             self.word_emb = word_emb
             print("Using fixed embedding")
 
+    def word_find(self, word):
+        return self.word_emb.get(word, np.zeros(self.N_word, dtype=np.float32))
+
     def gen_x_q_batch(self, q):
         if self.use_bert:
             return self.gen_x_q_bert_batch(q)
@@ -40,7 +43,7 @@ class WordEmbedding(nn.Module):
         for i, one_q in enumerate(q):
             q_val = []
             for ws in one_q:
-                q_val.append(self.word_emb.get(ws, np.zeros(self.N_word, dtype=np.float32)))
+                q_val.append(self.word_find(ws))
 
             val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [np.zeros(self.N_word, dtype=np.float32)])  #<BEG> and <END>
             val_len[i] = 1 + len(q_val) + 1
@@ -86,7 +89,7 @@ class WordEmbedding(nn.Module):
                     ws = item[0].split() + item[1].split()
                     ws_len = len(ws)
                     for w in ws:
-                        emb_list.append(self.word_emb.get(w, np.zeros(self.N_word, dtype=np.float32)))
+                        emb_list.append(self.word_find(w))
                     if ws_len == 0:
                         raise Exception("word list should not be empty!")
                     elif ws_len == 1:
@@ -104,18 +107,18 @@ class WordEmbedding(nn.Module):
                     if item in (
                     "none", "select", "from", "where", "having", "limit", "intersect", "except", "union", 'not',
                     'between', '=', '>', '<', 'in', 'like', 'is', 'exists', 'root', 'ascending', 'descending'):
-                        history_val.append(self.word_emb.get(item, np.zeros(self.N_word, dtype=np.float32)))
+                        history_val.append(self.word_find(item))
                     elif item == "orderBy":
-                        history_val.append((self.word_emb.get("order", np.zeros(self.N_word, dtype=np.float32)) +
-                                            self.word_emb.get("by", np.zeros(self.N_word, dtype=np.float32))) / 2)
+                        history_val.append((self.word_find("order") +
+                                            self.word_find("by")) / 2)
                     elif item == "groupBy":
-                        history_val.append((self.word_emb.get("group", np.zeros(self.N_word, dtype=np.float32)) +
-                                            self.word_emb.get("by", np.zeros(self.N_word, dtype=np.float32))) / 2)
+                        history_val.append((self.word_find("group") +
+                                            self.word_find("by")) / 2)
                     elif item in ('>=', '<=', '!='):
-                        history_val.append((self.word_emb.get(item[0], np.zeros(self.N_word, dtype=np.float32)) +
-                                            self.word_emb.get(item[1], np.zeros(self.N_word, dtype=np.float32))) / 2)
+                        history_val.append((self.word_find(item[0]) +
+                                            self.word_find(item[1])) / 2)
                 elif isinstance(item,int):
-                    history_val.append(self.word_emb.get(AGG_OPS[item], np.zeros(self.N_word, dtype=np.float32)))
+                    history_val.append(self.word_find(AGG_OPS[item]))
                 else:
                     print(("Warning: unsupported data type in history! {}".format(item)))
 
@@ -139,11 +142,10 @@ class WordEmbedding(nn.Module):
         val_emb_array = np.zeros((B,len(words), self.N_word), dtype=np.float32)
         for i,word in enumerate(words):
             if len(word.split()) == 1:
-                emb = self.word_emb.get(word, np.zeros(self.N_word, dtype=np.float32))
+                emb = self.word_find(word)
             else:
                 word = word.split()
-                emb = (self.word_emb.get(word[0], np.zeros(self.N_word, dtype=np.float32))
-                                       +self.word_emb.get(word[1], np.zeros(self.N_word, dtype=np.float32)) )/2
+                emb = (self.word_find(word[0]) + self.word_find(word[1]))/2
             for b in range(B):
                 val_emb_array[b,i,:] = emb
         val_inp = torch.from_numpy(val_emb_array)
@@ -181,8 +183,7 @@ class WordEmbedding(nn.Module):
             if self.trainable:
                 val = [self.w2i.get(x, 0) for x in one_str]
             else:
-                val = [self.word_emb.get(x, np.zeros(
-                    self.N_word, dtype=np.float32)) for x in one_str]
+                val = [self.word_find(x) for x in one_str]
             val_embs.append(val)
             val_len[i] = len(val)
         max_len = max(val_len)

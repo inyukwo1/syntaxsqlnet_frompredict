@@ -15,6 +15,7 @@ class FindPredictor(nn.Module):
         self.N_h = N_h
         self.gpu = gpu
         self.use_hs = use_hs
+        self.threshold = 0.5
 
         self.use_bert = True if bert else False
         if bert:
@@ -114,14 +115,31 @@ class FindPredictor(nn.Module):
             score = [sc.data.cpu().numpy() for sc in score]
         else:
             score = [sc.data.numpy() for sc in score]
-        threshold = 0.5
+
         for b in range(B):
             suberr = False
             for entry in range(len(score[b])):
-                if score[b][entry] > threshold and str(entry) not in truth[b]:
-                    err = True
-                if score[b][entry] <= threshold and str(entry) in truth[b]:
-                    err = True
+                if score[b][entry] > self.threshold and str(entry) not in truth[b]:
+                    suberr = True
+                if score[b][entry] <= self.threshold and str(entry) in truth[b]:
+                    suberr = True
             if suberr:
                 err += 1
         return np.array(err)
+
+    def score_to_tables(self, score):
+        score = F.sigmoid(score)
+        if self.gpu:
+            score = [sc.data.cpu().numpy() for sc in score]
+        else:
+            score = [sc.data.numpy() for sc in score]
+        B = len(score)
+        batch_tables = []
+        for b in range(B):
+            tables = []
+            for entry in range(len(score[b])):
+                if score[b][entry] > self.threshold:
+                    tables.append(entry)
+            batch_tables.append(tables)
+        return batch_tables
+

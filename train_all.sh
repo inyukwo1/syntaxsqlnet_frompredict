@@ -35,6 +35,7 @@ mkdir -p ${log_dir}
 
 
 export CUDA_VISIBLE_DEVICES=7
+echo "using gpu::" $CUDA_VISIBLE_DEVICES
 module=col
 epoch=600
 python train.py \

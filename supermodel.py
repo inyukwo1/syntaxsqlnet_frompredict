@@ -19,6 +19,7 @@ from models.multisql_predictor import MultiSqlPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
 from models.op_predictor import OpPredictor
+from models.find_predictor import FindPredictor
 from preprocess_train_dev_data import index_to_column_name
 
 
@@ -131,6 +132,9 @@ class SuperModel(nn.Module):
         self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
         self.andor.eval()
 
+        self.from_table = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
+        self.from_table.eval()
+
         self.softmax = nn.Softmax() #dim=1
         self.CE = nn.CrossEntropyLoss()
         self.log_softmax = nn.LogSoftmax()
@@ -230,6 +234,9 @@ class SuperModel(nn.Module):
                 stack.push(("root","original"))
                 # history[0].append("root")
             elif vet == "none":
+                from_score = self.from_table.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
+                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
+                from_tables = self.from_table.score_to_tables(from_score)
                 score = self.key_word.forward(q_emb_var,q_len,hs_emb_var,hs_len,kw_emb_var,kw_len)
                 kw_num_score, kw_score = [x.data.cpu().numpy() for x in score]
                 # print("kw_num_score:{}".format(kw_num_score))
@@ -239,13 +246,13 @@ class SuperModel(nn.Module):
                 kw_score.sort(reverse=True)
                 # print("num_kw:{}".format(num_kw))
                 for kw in kw_score:
-                    stack.push(KW_OPS[kw])
-                stack.push("select")
-            elif vet in ("select","orderBy","where","groupBy","having"):
-                kw = vet
+                    stack.push((KW_OPS[kw], from_tables))
+                stack.push(("select", from_tables))
+            elif isinstance(vet,tuple) and vet[0] in ("select","orderBy","where","groupBy","having"):
+                kw = vet[0]
                 current_sql[kw] = []
-                history[0].append(vet)
-                stack.push(("col",vet))
+                history[0].append(kw)
+                stack.push(("col", kw, vet[1]))
                 # score = self.andor.forward(q_emb_var,q_len,hs_emb_var,hs_len)
                 # label = score[0].data.cpu().numpy()
                 # andor_cond = COND_OPS[label]
@@ -254,7 +261,8 @@ class SuperModel(nn.Module):
             #     score = self.having.forward(q_emb_var,q_len,hs_emb_var,hs_len,col_emb_var,col_len,)
             elif isinstance(vet,tuple) and vet[0] == "col":
                 # print("q_emb_var:{} hs_emb_var:{} col_emb_var:{}".format(q_emb_var.size(), hs_emb_var.size(),col_emb_var.size()))
-                score = self.col.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len)
+                from_tables = vet[2]
+                score = self.col.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, from_tables)
                 col_num_score, col_score = [x.data.cpu().numpy() for x in score]
                 col_num = np.argmax(col_num_score[0]) + 1  # double check
                 cols = np.argsort(-col_score[0])[:col_num]
@@ -281,7 +289,7 @@ class SuperModel(nn.Module):
                     if label == 1:
                         has_having = (label == 1)
                         # stack.insert(-col_num,"having")
-                        stack.push("having")
+                        stack.push(("having", from_tables))
                 # history.append(index_to_column_name(cols[-1], tables[0]))
             elif isinstance(vet,tuple) and vet[0] == "agg":
                 history[0].append(index_to_column_name(vet[2], tables))
