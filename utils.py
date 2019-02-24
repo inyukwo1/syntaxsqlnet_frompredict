@@ -307,13 +307,19 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         elif component == "andor":
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
         elif component == "from":
+            real_label = []
+            for one_label in label:
+                tab_list = list(one_label.keys())
+                tab_list = [int(key) for key in tab_list]
+                real_label.append(tab_list)
+            label = real_label
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
             score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         # print("label {}".format(label))
-        if component in ("agg","col","keyword","op"):
+        if component in ("agg","col","keyword","op", "from"):
             num_err, p_err, err = model.check_acc(score, label)
             total_number_error += num_err
             total_p_error += p_err

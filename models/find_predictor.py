@@ -34,6 +34,18 @@ class FindPredictor(nn.Module):
         self.schema_encoder = SchemaEncoder(N_h, 200)
         self.schema_aggregator = SchemaAggregator(N_h)
 
+        self.q_table_num_att = nn.Linear(self.encoded_num, N_h)
+        self.q_col_num_att = nn.Linear(self.encoded_num, N_h)
+        self.hs_table_num_att = nn.Linear(N_h, N_h)
+        self.hs_col_num_att = nn.Linear(N_h, N_h)
+
+        self.schema_num_out = nn.Linear(N_h, N_h)
+        self.q_table_num_out = nn.Linear(N_h, N_h)
+        self.q_col_num_out = nn.Linear(N_h, N_h)
+        self.hs_table_num_out = nn.Linear(N_h, N_h)
+        self.hs_col_num_out = nn.Linear(N_h, N_h)
+        self.table_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 6))
+
         self.q_table_att = nn.Linear(self.encoded_num, N_h)
         self.q_col_att = nn.Linear(self.encoded_num, N_h)
         self.hs_table_att = nn.Linear(N_h, N_h)
@@ -46,6 +58,7 @@ class FindPredictor(nn.Module):
         self.hs_col_out = nn.Linear(N_h, N_h)
 
         self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
+
 
         if gpu:
             self.cuda()
@@ -71,6 +84,21 @@ class FindPredictor(nn.Module):
         SIZE_CHECK(table_tensors, [B, max_table_len, self.N_h])
         SIZE_CHECK(col_tensors, [B, max_col_len, self.N_h])
 
+        q_table_weighted_num_num = seq_conditional_weighted_num(self.q_table_num_att, q_enc, q_len, table_tensors,
+                                                            table_len).sum(1)
+        hs_table_weighted_num_num = seq_conditional_weighted_num(self.hs_table_num_att, hs_enc, hs_len, table_tensors,
+                                                             table_len).sum(1)
+        q_col_weighted_num_num = seq_conditional_weighted_num(self.q_col_num_att, q_enc, q_len, col_tensors, col_len).sum(1)
+        hs_col_weighted_num_num = seq_conditional_weighted_num(self.hs_col_num_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
+
+        x = self.schema_out(F.relu(aggregated_schema))
+        x = x + self.q_table_out(q_table_weighted_num_num)
+        x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num_num)
+        x = x + self.q_col_out(q_col_weighted_num_num)
+        x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num_num)
+        table_num_score = self.table_num_out(x)
+
+
         q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len).sum(1)
         hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len).sum(1)
         q_col_weighted_num = seq_conditional_weighted_num(self.q_col_att, q_enc, q_len, col_tensors, col_len).sum(1)
@@ -89,43 +117,77 @@ class FindPredictor(nn.Module):
             if num < max_table_len:
                 table_score[idx, num:] = -100
 
-        return table_score
+        return table_num_score, table_score
 
     def loss(self, score, truth):
+        table_num_score, table_score = score
+        num_truth = [len(one_truth) - 1 for one_truth in truth]
+        data = torch.from_numpy(np.array(num_truth))
+        if self.gpu:
+            data = data.cuda()
+        truth_num_var = Variable(data)
+        loss = F.cross_entropy(table_num_score, truth_num_var)
+
         B = len(truth)
-        SIZE_CHECK(score, [B, None])
-        max_table_len = list(score.size())[1]
+        SIZE_CHECK(table_score, [B, None])
+        max_table_len = list(table_score.size())[1]
         label = []
         for one_truth in truth:
             label.append([1. if str(i) in one_truth else 0. for i in range(max_table_len)])
-
         label = torch.from_numpy(np.array(label)).type(torch.FloatTensor)
         if self.gpu:
             label = label.cuda()
         label = Variable(label)
-        loss = F.binary_cross_entropy_with_logits(score, label)
+        loss += F.binary_cross_entropy_with_logits(table_score, label)
         return loss
 
     def check_acc(self, score, truth):
-        err = 0
-        score = F.sigmoid(score)
+        num_err, err, tot_err = 0, 0, 0
         B = len(truth)
         pred = []
         if self.gpu:
-            score = [sc.data.cpu().numpy() for sc in score]
+            table_num_score, table_score = [sc.data.cpu().numpy() for sc in score]
         else:
-            score = [sc.data.numpy() for sc in score]
+            table_num_score, table_score = [sc.data.numpy() for sc in score]
 
         for b in range(B):
-            suberr = False
-            for entry in range(len(score[b])):
-                if score[b][entry] > self.threshold and str(entry) not in truth[b]:
-                    suberr = True
-                if score[b][entry] <= self.threshold and str(entry) in truth[b]:
-                    suberr = True
-            if suberr:
-                err += 1
-        return np.array(err)
+            cur_pred = {}
+            table_num = np.argmax(table_num_score[b]) + 1
+            cur_pred["table_num"] = table_num
+            cur_pred["table"] = np.argsort(-table_score[b])[:table_num]
+            pred.append(cur_pred)
+        for b, (p, t) in enumerate(zip(pred, truth)):
+            table_num, tab = p['table_num'], p['table']
+            flag = True
+            if table_num != len(t): # double check truth format and for test cases
+                num_err += 1
+                flag = False
+            #to eval col predicts, if the gold sql has JOIN and foreign key col, then both fks are acceptable
+            fk_list = []
+            regular = []
+            for l in t:
+                if isinstance(l, list):
+                    fk_list.append(l)
+                else:
+                    regular.append(l)
+
+            if flag: #double check
+                for c in tab:
+                    for fk in fk_list:
+                        if c in fk:
+                            fk_list.remove(fk)
+                    for r in regular:
+                        if c == r:
+                            regular.remove(r)
+
+                if len(fk_list) != 0 or len(regular) != 0:
+                    err += 1
+                    flag = False
+
+            if not flag:
+                tot_err += 1
+
+        return np.array((num_err, err, tot_err))
 
     def score_to_tables(self, score):
         score = F.sigmoid(score)
