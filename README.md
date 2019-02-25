@@ -17,7 +17,7 @@ Source code of our EMNLP 2018 paper: [SyntaxSQLNet: Syntax Tree Networks for Com
 
 #### Environment Setup
 
-1. The code uses Python 2.7 and [Pytorch 0.2.0](https://pytorch.org/previous-versions/) GPU.
+1. The code uses Python 3.6 and latest pytorch GPU.
 2. Install Python dependency: `pip install -r requirements.txt`
 
 #### Download Data, Embeddings, Scripts, and Pretrained Models

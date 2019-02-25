@@ -76,8 +76,9 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
 
     return from_candidates
 
+
 ## used for training in train.py
-def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert):
+def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert, use_from):
     model.train()
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
@@ -107,6 +108,8 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
             from_candidates = to_batch_from_candidates(par_tab_nums, data, perm, st, ed)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
+            if not use_from:
+                from_candidates = None
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, from_candidates)
 
         elif component == "op":
@@ -200,8 +203,9 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
 
     return cum_loss / len(data)
 
+
 ## used for development evaluation in train.py
-def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_print=False, train_flag = False):
+def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_print=False, train_flag = False, use_from = False):
     model.eval()
     perm = list(range(len(data)))
     st = 0
@@ -238,6 +242,8 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
             from_candidates = to_batch_from_candidates(par_tab_nums, data, perm, st, ed)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(col_seq, tab_seq)
+            if not use_from:
+                from_candidates = None
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, from_candidates)
         elif component == "op":
             #B*index
@@ -340,6 +346,7 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
 def timeout_handler(num, stack):
     print("Received SIGALRM")
     raise Exception("Timeout")
+
 
 ## used in test.py
 def test_acc(model, batch_size, data,output_path):

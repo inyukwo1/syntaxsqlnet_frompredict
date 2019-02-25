@@ -9,9 +9,9 @@ from pytorch_pretrained_bert import BertModel
 from models.schema_encoder import SchemaEncoder, SchemaAggregator
 
 
-class FindPredictor(nn.Module):
+class FromPredictor(nn.Module):
     def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert=None):
-        super(FindPredictor, self).__init__()
+        super(FromPredictor, self).__init__()
         self.N_h = N_h
         self.gpu = gpu
         self.use_hs = use_hs
@@ -58,7 +58,6 @@ class FindPredictor(nn.Module):
         self.hs_col_out = nn.Linear(N_h, N_h)
 
         self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
-
 
         if gpu:
             self.cuda()
@@ -162,7 +161,6 @@ class FindPredictor(nn.Module):
             if table_num != len(t): # double check truth format and for test cases
                 num_err += 1
                 flag = False
-            #to eval col predicts, if the gold sql has JOIN and foreign key col, then both fks are acceptable
             fk_list = []
             regular = []
             for l in t:
@@ -190,18 +188,17 @@ class FindPredictor(nn.Module):
         return np.array((num_err, err, tot_err))
 
     def score_to_tables(self, score):
-        score = F.sigmoid(score)
         if self.gpu:
-            score = [sc.data.cpu().numpy() for sc in score]
+            table_num_score, table_score = [sc.data.cpu().numpy() for sc in score]
         else:
-            score = [sc.data.numpy() for sc in score]
+            table_num_score, table_score = [sc.data.numpy() for sc in score]
         B = len(score)
         batch_tables = []
         for b in range(B):
-            tables = []
-            for entry in range(len(score[b])):
-                if score[b][entry] > self.threshold:
-                    tables.append(entry)
-            batch_tables.append(tables)
+            cur_pred = {}
+            table_num = np.argmax(table_num_score[b]) + 1
+            cur_pred["table_num"] = table_num
+            cur_pred["table"] = np.argsort(-table_score[b])[:table_num]
+            batch_tables.append(cur_pred["table"])
         return batch_tables
 

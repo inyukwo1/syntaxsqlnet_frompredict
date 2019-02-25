@@ -15,7 +15,7 @@ from models.multisql_predictor import MultiSqlPredictor
 from models.op_predictor import OpPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
-from models.find_predictor import FindPredictor
+from models.from_predictor import FromPredictor
 from pytorch_pretrained_bert import BertModel
 
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
@@ -28,6 +28,7 @@ if __name__ == '__main__':
             help='If set, use bert to encode question.')
     parser.add_argument('--toy', action='store_true',
             help='If set, use small data; used for fast debugging.')
+    parser.add_argument('--use_from', action='store_true')
     parser.add_argument('--save_dir', type=str, default='',
             help='set model save directory.')
     parser.add_argument('--data_root', type=str, default='',
@@ -55,7 +56,7 @@ if __name__ == '__main__':
         BATCH_SIZE=20
     else:
         USE_SMALL=False
-        BATCH_SIZE=32
+        BATCH_SIZE=48
 
     if torch.cuda.is_available():
         GPU = True
@@ -74,14 +75,9 @@ if __name__ == '__main__':
         exit(1)
     train_data = load_train_dev_dataset(args.train_component, "train", args.history_type, args.data_root)
     dev_data = load_train_dev_dataset(args.train_component, "dev", args.history_type, args.data_root)
-    # sql_data, table_data, val_sql_data, val_table_data, \
-    #         test_sql_data, test_table_data, \
-    #         TRAIN_DB, DEV_DB, TEST_DB = load_dataset(args.dataset, use_small=USE_SMALL)
 
-    word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), \
-            load_used=args.train_emb, use_small=USE_SMALL)
+    word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), load_used=args.train_emb, use_small=USE_SMALL)
     print("finished load word embedding")
-    #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
     model = None
     if BERT:
         bert_model = BertModel.from_pretrained('bert-base-uncased')
@@ -112,7 +108,7 @@ if __name__ == '__main__':
     elif args.train_component == "andor":
         model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "from":
-        model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = FromPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
         optimizer_bert = torch.optim.Adam(bert_model.parameters(), lr=bert_learning_rate)
@@ -127,8 +123,8 @@ if __name__ == '__main__':
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         print((' Loss = %s'% epoch_train(GPU,
-                model, optimizer, BATCH_SIZE,args.train_component,embed_layer,train_data, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
-        acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer,dev_data, table_type=args.table_type)
+                model, optimizer, BATCH_SIZE,args.train_component,embed_layer,train_data, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert, use_from=args.use_from)))
+        acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer,dev_data, table_type=args.table_type, use_from=args.use_from)
         if acc > best_acc:
             best_acc = acc
             print("Save model...")

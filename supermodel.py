@@ -19,7 +19,7 @@ from models.multisql_predictor import MultiSqlPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
 from models.op_predictor import OpPredictor
-from models.find_predictor import FindPredictor
+from models.from_predictor import FromPredictor
 from preprocess_train_dev_data import index_to_column_name
 
 
@@ -89,7 +89,7 @@ def to_batch_tables(tables, B, table_type):
 
 
 class SuperModel(nn.Module):
-    def __init__(self, word_emb, N_word, N_h=300, N_depth=2, gpu=True, trainable_emb=False, table_type="std", use_hs=True, bert=None):
+    def __init__(self, word_emb, N_word, N_h=300, N_depth=2, gpu=True, trainable_emb=False, table_type="std", use_hs=True, use_from=False, bert=None):
         super(SuperModel, self).__init__()
         self.gpu = gpu
         self.N_h = N_h
@@ -98,8 +98,8 @@ class SuperModel(nn.Module):
         self.table_type = table_type
         self.use_hs = use_hs
         self.SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
+        self.use_from = use_from
         use_bert = False if bert is None else True
-
 
         # word embedding layer
         self.embed_layer = WordEmbedding(word_emb, N_word, gpu, self.SQL_TOK, use_bert , trainable=trainable_emb)
@@ -132,7 +132,7 @@ class SuperModel(nn.Module):
         self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
         self.andor.eval()
 
-        self.from_table = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
+        self.from_table = FromPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
         self.from_table.eval()
 
         self.softmax = nn.Softmax() #dim=1
@@ -262,6 +262,8 @@ class SuperModel(nn.Module):
             elif isinstance(vet,tuple) and vet[0] == "col":
                 # print("q_emb_var:{} hs_emb_var:{} col_emb_var:{}".format(q_emb_var.size(), hs_emb_var.size(),col_emb_var.size()))
                 from_tables = vet[2]
+                if not self.use_from:
+                    from_tables = None
                 score = self.col.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, from_tables)
                 col_num_score, col_score = [x.data.cpu().numpy() for x in score]
                 col_num = np.argmax(col_num_score[0]) + 1  # double check

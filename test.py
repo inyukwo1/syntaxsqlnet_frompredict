@@ -13,6 +13,7 @@ if __name__ == '__main__':
     parser.add_argument('--toy', action='store_true',
                         help='If set, use small data; used for fast debugging.')
     parser.add_argument('--models', type=str, help='path to saved model')
+    parser.add_argument('--use_from', action='store_true')
     parser.add_argument('--test_data_path',type=str)
     parser.add_argument('--output_path', type=str)
     parser.add_argument('--history_type', type=str, default='full', choices=['full','part','no'], help='full, part, or no history')
@@ -27,10 +28,6 @@ if __name__ == '__main__':
     B_word=42
     N_h = 300
     N_depth=2
-    # if args.part:
-    #     part = True
-    # else:
-    #     part = False
     if args.toy:
         USE_SMALL=True
         GPU=True
@@ -51,10 +48,8 @@ if __name__ == '__main__':
 
     word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), \
             load_used=args.train_emb, use_small=USE_SMALL)
-    # dev_data = load_train_dev_dataset(args.train_component, "dev", args.history)
-    #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
 
-    model = SuperModel(word_emb, N_word=N_word, gpu=GPU, trainable_emb = args.train_emb, table_type=args.table_type, use_hs=use_hs)
+    model = SuperModel(word_emb, N_word=N_word, gpu=GPU, trainable_emb = args.train_emb, table_type=args.table_type, use_hs=use_hs, use_from=args.use_from)
 
     # agg_m, sel_m, cond_m = best_model_name(args)
     # torch.save(model.state_dict(), "saved_models/{}_models.dump".format(args.train_component))
@@ -68,7 +63,7 @@ if __name__ == '__main__':
     model.root_teminal.load_state_dict(torch.load("{}/root_tem_models.dump".format(args.models)))
     model.des_asc.load_state_dict(torch.load("{}/des_asc_models.dump".format(args.models)))
     model.having.load_state_dict(torch.load("{}/having_models.dump".format(args.models)))
-    model.from_table.load_state_dict(torch.load("{}/from_models.dump".format(args.models)))
+    if args.use_from:
+        model.from_table.load_state_dict(torch.load("{}/from_models.dump".format(args.models)))
 
     test_acc(model, BATCH_SIZE, data, args.output_path)
-    #test_exec_acc()

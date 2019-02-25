@@ -15,7 +15,7 @@ from models.multisql_predictor import MultiSqlPredictor
 from models.op_predictor import OpPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
-from models.find_predictor import FindPredictor
+from models.from_predictor import FromPredictor
 from pytorch_pretrained_bert import BertModel
 import time
 
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     elif args.train_component == "andor":
         model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "from":
-        model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = FromPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
         optimizer_bert = torch.optim.Adam(bert_model.parameters(), lr=bert_learning_rate)
