@@ -18,6 +18,7 @@ xlrd
 xlwt
 scikit-learn
 pytorch-pretrained-bert
+pytorch-nlp
 tqdm
 sqlparse
 dgl

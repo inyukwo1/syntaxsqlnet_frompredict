@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from torchnlp.nn import Attention
 from torch.autograd import Variable
 from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
 from pytorch_pretrained_bert import BertModel
@@ -31,9 +32,14 @@ class FromPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
+        self.col_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+                num_layers=N_depth, batch_first=True,
+                dropout=0.3, bidirectional=True)
         self.tab_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h // 2,
                                 num_layers=N_depth, batch_first=True,
                                 dropout=0.3, bidirectional=True)
+
+        self.table_column_attention = Attention(N_h)
 
         self.q_num_att = nn.Linear(self.encoded_num, N_h)
         self.hs_num_att = nn.Linear(N_h, N_h)
@@ -70,7 +76,35 @@ class FromPredictor(nn.Module):
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
+        col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
         tab_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.tab_lstm)
+
+        st_ed_par_tables = []
+        for b, batch_max_table in enumerate(table_len):
+            st = 1
+            ed = 1
+            batch_st_ed_tables = []
+            for i in range(batch_max_table):
+                while parent_tables[b][ed] == i:
+                    ed += 1
+                    if ed >= len(parent_tables[b]):
+                        break
+                batch_st_ed_tables.append((st, ed))
+                st = ed
+            st_ed_par_tables.append(batch_st_ed_tables)
+        attentioned_table_enc = []
+        for b, batch_st_ed_tables in enumerate(st_ed_par_tables):
+            batch_attentioned = []
+            for table_num, (st, ed) in enumerate(batch_st_ed_tables):
+                one_attention, _ = self.table_column_attention(tab_enc[b, table_num].view(1, 1, self.N_h),
+                                                            col_enc[b, st:ed].view(1, ed - st, self.N_h)).view(self.N_h)
+                batch_attentioned.append(one_attention)
+            batch_attentioned = torch.stack(batch_attentioned)
+            padding = torch.from_numpy(np.zeros((max_tab_len - table_len[b], self.N_h), dtype=float))
+            batch_attentioned = torch.cat(batch_attentioned, padding, dim=0)
+            SIZE_CHECK(batch_attentioned, [max_tab_len, self.N_h])
+            attentioned_table_enc.append(batch_attentioned)
+        tab_enc = torch.stack(attentioned_table_enc)
 
         # Predict column number: 1-3
         q_weighted_num = seq_conditional_weighted_num(self.q_num_att, q_enc, q_len, tab_enc, table_len).sum(1)
