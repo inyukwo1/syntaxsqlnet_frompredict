@@ -28,17 +28,17 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_col_extract_re"
+save_dir="${data_root}/saved_models_trial8"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=7
+export CUDA_VISIBLE_DEVICES=0
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "col extract!"
+echo "trial8 - neiivest encoding!"
 
-module=col
+module=from
 epoch=600
 python train.py \
   --data_root    ${data_root} \
@@ -47,7 +47,6 @@ python train.py \
   --table_type   ${tbl} \
   --train_component ${module} \
   --epoch        ${epoch} \
-  --use_from \
   --tqdm \
   ${toy} \
   > "${log_dir}/train_${d_type}_hs=${hs}_tbl=${tbl}_${module}_${DATE}.txt"  &

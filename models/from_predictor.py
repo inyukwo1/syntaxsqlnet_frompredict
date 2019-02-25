@@ -31,33 +31,29 @@ class FromPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.schema_encoder = SchemaEncoder(N_h, 200)
-        self.schema_aggregator = SchemaAggregator(N_h)
+        self.tab_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h // 2,
+                                num_layers=N_depth, batch_first=True,
+                                dropout=0.3, bidirectional=True)
 
-        self.q_table_num_att = nn.Linear(self.encoded_num, N_h)
-        self.q_col_num_att = nn.Linear(self.encoded_num, N_h)
-        self.hs_table_num_att = nn.Linear(N_h, N_h)
-        self.hs_col_num_att = nn.Linear(N_h, N_h)
+        self.q_num_att = nn.Linear(self.encoded_num, N_h)
+        self.hs_num_att = nn.Linear(N_h, N_h)
+        self.col_num_out_q = nn.Linear(self.encoded_num, N_h)
+        self.col_num_out_hs = nn.Linear(N_h, N_h)
+        self.col_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 6))  # num of cols: 1-3
 
-        self.schema_num_out = nn.Linear(N_h, N_h)
-        self.q_table_num_out = nn.Linear(N_h, N_h)
-        self.q_col_num_out = nn.Linear(N_h, N_h)
-        self.hs_table_num_out = nn.Linear(N_h, N_h)
-        self.hs_col_num_out = nn.Linear(N_h, N_h)
-        self.table_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 6))
+        self.q_att = nn.Linear(self.encoded_num, N_h)
+        self.hs_att = nn.Linear(N_h, N_h)
+        self.col_out_q = nn.Linear(self.encoded_num, N_h)
+        self.col_out_c = nn.Linear(N_h, N_h)
+        self.col_out_hs = nn.Linear(N_h, N_h)
+        self.col_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 1))
 
-        self.q_table_att = nn.Linear(self.encoded_num, N_h)
-        self.q_col_att = nn.Linear(self.encoded_num, N_h)
-        self.hs_table_att = nn.Linear(N_h, N_h)
-        self.hs_col_att = nn.Linear(N_h, N_h)
-
-        self.schema_out = nn.Linear(N_h, N_h)
-        self.q_table_out = nn.Linear(N_h, N_h)
-        self.q_col_out = nn.Linear(N_h, N_h)
-        self.hs_table_out = nn.Linear(N_h, N_h)
-        self.hs_col_out = nn.Linear(N_h, N_h)
-
-        self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
+        self.softmax = nn.Softmax()  # dim=1
+        self.CE = nn.CrossEntropyLoss()
+        self.log_softmax = nn.LogSoftmax()
+        self.mlsml = nn.MultiLabelSoftMarginLoss()
+        self.bce_logit = nn.BCEWithLogitsLoss()
+        self.sigm = nn.Sigmoid()
 
         if gpu:
             self.cuda()
@@ -67,56 +63,44 @@ class FromPredictor(nn.Module):
 
         max_q_len = max(q_len)
         max_hs_len = max(hs_len)
-        max_col_len = max(col_len)
-        max_table_len = max(table_len)
+        max_tab_len = max(table_len)
         B = len(q_len)
         if self.use_bert:
             q_enc = self.q_bert(q_emb_var, q_len)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
-        assert list(q_enc.size()) == [B, max_q_len, self.encoded_num]
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        table_tensors, col_tensors, batch_graph = self.schema_encoder(parent_tables, foreign_keys,
-                                                                      col_emb_var, col_name_len, col_len,
-                                                                      table_emb_var, table_name_len, table_len)
-        aggregated_schema = self.schema_aggregator(batch_graph)
-        SIZE_CHECK(table_tensors, [B, max_table_len, self.N_h])
-        SIZE_CHECK(col_tensors, [B, max_col_len, self.N_h])
+        tab_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.tab_lstm)
 
-        q_table_weighted_num_num = seq_conditional_weighted_num(self.q_table_num_att, q_enc, q_len, table_tensors,
-                                                            table_len).sum(1)
-        hs_table_weighted_num_num = seq_conditional_weighted_num(self.hs_table_num_att, hs_enc, hs_len, table_tensors,
-                                                             table_len).sum(1)
-        q_col_weighted_num_num = seq_conditional_weighted_num(self.q_col_num_att, q_enc, q_len, col_tensors, col_len).sum(1)
-        hs_col_weighted_num_num = seq_conditional_weighted_num(self.hs_col_num_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
+        # Predict column number: 1-3
+        q_weighted_num = seq_conditional_weighted_num(self.q_num_att, q_enc, q_len, tab_enc, table_len).sum(1)
+        SIZE_CHECK(q_weighted_num, [B, self.N_h])
 
-        x = self.schema_out(F.relu(aggregated_schema))
-        x = x + self.q_table_out(q_table_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num_num)
-        x = x + self.q_col_out(q_col_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num_num)
-        table_num_score = self.table_num_out(x)
+        # Same as the above, compute SQL history embedding weighted by column attentions
+        hs_weighted_num = seq_conditional_weighted_num(self.hs_num_att, hs_enc, hs_len, tab_enc, table_len).sum(1)
+        SIZE_CHECK(hs_weighted_num, [B, self.N_h])
+        # self.col_num_out: (B, 3)
+        col_num_score = self.col_num_out(
+            self.col_num_out_q(q_weighted_num) + int(self.use_hs) * self.col_num_out_hs(hs_weighted_num))
 
+        # Predict columns.
+        q_weighted = seq_conditional_weighted_num(self.q_att, q_enc, q_len, tab_enc)
 
-        q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len).sum(1)
-        hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len).sum(1)
-        q_col_weighted_num = seq_conditional_weighted_num(self.q_col_att, q_enc, q_len, col_tensors, col_len).sum(1)
-        hs_col_weighted_num = seq_conditional_weighted_num(self.hs_col_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
+        # Same as the above, compute SQL history embedding weighted by column attentions
+        hs_weighted = seq_conditional_weighted_num(self.hs_att, hs_enc, hs_len, tab_enc)
+        # Compute prediction scores
+        # self.col_out.squeeze(): (B, max_col_len)
+        tab_score = self.col_out(
+            self.col_out_q(q_weighted) + int(self.use_hs) * self.col_out_hs(hs_weighted) + self.col_out_c(
+                tab_enc)).view(B, -1)
 
-        x = self.schema_out(F.relu(aggregated_schema))
-        x = x + self.q_table_out(q_table_weighted_num)
-        x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num)
-        x = x + self.q_col_out(q_col_weighted_num)
-        x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num)
+        for idx, num in enumerate(table_len):
+            if num < max_tab_len:
+                tab_score[idx, num:] = -100
 
-        SIZE_CHECK(x, [B, self.N_h])
-        table_score = (self.table_att(table_tensors) * x.unsqueeze(1)).sum(2)
-        SIZE_CHECK(table_score, [B, max_table_len])
-        for idx, num in enumerate(table_len.tolist()):
-            if num < max_table_len:
-                table_score[idx, num:] = -100
+        score = (col_num_score, tab_score)
 
-        return table_num_score, table_score
+        return score
 
     def loss(self, score, truth):
         table_num_score, table_score = score
