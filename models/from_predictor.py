@@ -80,6 +80,7 @@ class FromPredictor(nn.Module):
         tab_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.tab_lstm)
 
         st_ed_par_tables = []
+        max_sted_len = 0
         for b, batch_max_table in enumerate(table_len):
             st = 1
             ed = 1
@@ -90,21 +91,43 @@ class FromPredictor(nn.Module):
                     if ed >= len(parent_tables[b]):
                         break
                 batch_st_ed_tables.append((st, ed))
+                if ed - st > max_sted_len:
+                    max_sted_len = ed - st
                 st = ed
             st_ed_par_tables.append(batch_st_ed_tables)
-        attentioned_table_enc = []
-        for b, batch_st_ed_tables in enumerate(st_ed_par_tables):
-            batch_attentioned = []
-            for table_num, (st, ed) in enumerate(batch_st_ed_tables):
-                one_attention, _ = self.table_column_attention(tab_enc[b, table_num].view(1, 1, self.N_h),
-                                                            col_enc[b, st:ed].view(1, ed - st, self.N_h)).view(self.N_h)
-                batch_attentioned.append(one_attention)
-            batch_attentioned = torch.stack(batch_attentioned)
-            padding = torch.from_numpy(np.zeros((max_tab_len - table_len[b], self.N_h), dtype=float))
-            batch_attentioned = torch.cat(batch_attentioned, padding, dim=0)
-            SIZE_CHECK(batch_attentioned, [max_tab_len, self.N_h])
-            attentioned_table_enc.append(batch_attentioned)
-        tab_enc = torch.stack(attentioned_table_enc)
+        if torch.cuda.is_available():
+            col_enc = col_enc.cpu()
+            tab_enc = tab_enc.cpu()
+        new_tab_enc = []
+        for b in range(len(table_len)):
+            new_tab_enc.append(tab_enc[b, :table_len[b]])
+        tab_enc = torch.cat(new_tab_enc, dim=0)
+        new_col_enc = []
+        for b in range(len(col_enc)):
+            for table_num, (st, ed) in enumerate(st_ed_par_tables[b]):
+                subcol = col_enc[b, st:ed]
+                padding = torch.from_numpy(np.zeros((max_sted_len - (ed - st), self.N_h), dtype=np.float32))
+                padded_col = torch.cat((subcol, padding),
+                                       dim=0)
+                new_col_enc.append(padded_col)
+        if torch.cuda.is_available():
+            tab_enc = tab_enc.cuda()
+            col_enc = torch.stack(new_col_enc).cuda()
+        else:
+            col_enc = torch.stack(new_col_enc)
+        tab_enc, _ = self.table_column_attention(tab_enc.view(-1, 1, self.N_h), col_enc.view(-1, max_sted_len, self.N_h))
+        if torch.cuda.is_available():
+            tab_enc = tab_enc.cpu()
+        tab_enc = tab_enc.view(-1, self.N_h)
+        new_tab_enc = []
+        st = 0
+        for b in range(len(table_len)):
+            tab_tensor = tab_enc[st: st+table_len[b]]
+            padding = torch.from_numpy(np.zeros((max_tab_len - table_len[b], self.N_h), dtype=np.float32))
+            new_tab_enc.append(torch.cat((tab_tensor, padding), dim=0))
+        tab_enc = torch.stack(new_tab_enc)
+        if torch.cuda.is_available():
+            tab_enc = tab_enc.cuda()
 
         # Predict column number: 1-3
         q_weighted_num = seq_conditional_weighted_num(self.q_num_att, q_enc, q_len, tab_enc, table_len).sum(1)
