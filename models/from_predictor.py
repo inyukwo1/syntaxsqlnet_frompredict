@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
+from torch.nn.modules import BatchNorm1d
 from pytorch_pretrained_bert import BertModel
 from models.schema_encoder import SchemaEncoder, SchemaAggregator
 
@@ -129,11 +130,15 @@ class FromPredictor(nn.Module):
                                 dropout=0.3, bidirectional=True)
 
         self.table_column_attention1 = Attention(N_h)
+        self.tablebatch1 = BatchNorm1d(N_h)
         self.table_column_attention2 = Attention(N_h)
+        self.tablebatch2 = BatchNorm1d(N_h)
         self.table_column_attention3 = Attention(N_h)
+        self.tablebatch3 = BatchNorm1d(N_h)
         self.column_attention1 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.colbatch1 = BatchNorm1d(N_h)
         self.column_attention2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.column_attention3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.colbatch2 = BatchNorm1d(N_h)
 
         self.q_num_att = nn.Linear(self.encoded_num, N_h)
         self.hs_num_att = nn.Linear(N_h, N_h)
@@ -212,10 +217,15 @@ class FromPredictor(nn.Module):
         tab_enc = tab_enc.view(-1, 1, self.N_h)
         col_enc = col_enc.view(-1, max_sted_len, self.N_h)
         tab_enc, _ = self.table_column_attention1(tab_enc, col_enc)
+        tab_enc = self.tablebatch1(tab_enc)
         col_enc = self.column_attention1(col_enc)
+        col_enc = self.colbatch1(col_enc)
         tab_enc, _ = self.table_column_attention2(tab_enc, col_enc)
+        tab_enc = self.tablebatch2(tab_enc)
         col_enc = self.column_attention2(col_enc)
+        col_enc = self.colbatch2(col_enc)
         tab_enc, _ = self.table_column_attention3(tab_enc, col_enc)
+        tab_enc = self.tablebatch3(tab_enc)
         if torch.cuda.is_available():
             tab_enc = tab_enc.cpu()
         tab_enc = tab_enc.view(-1, self.N_h)
