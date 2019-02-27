@@ -122,10 +122,10 @@ class FromPredictor(nn.Module):
                 dropout=0.3, bidirectional=True)
 
         self.col_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
-                num_layers=N_depth, batch_first=True,
+                num_layers=1, batch_first=True,
                 dropout=0.3, bidirectional=True)
         self.tab_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h // 2,
-                                num_layers=N_depth, batch_first=True,
+                                num_layers=1, batch_first=True,
                                 dropout=0.3, bidirectional=True)
 
         self.table_column_attention1 = Attention(N_h)
