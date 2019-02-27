@@ -335,7 +335,7 @@ def parse_value(toks, start_idx, tables_with_alias, schema, default_tables=None)
         except:
             end_idx = idx
             while end_idx < len_ and toks[end_idx] != ',' and toks[end_idx] != ')'\
-                and toks[end_idx] != 'and' and toks[end_idx] not in CLAUSE_KEYWORDS:
+                and toks[end_idx] != 'and' and toks[end_idx] != 'join' and toks[end_idx] not in CLAUSE_KEYWORDS:
                 end_idx += 1
 
             idx, val = parse_col_unit(toks[start_idx: end_idx], 0, tables_with_alias, schema, default_tables)
@@ -375,7 +375,7 @@ def parse_condition(toks, start_idx, tables_with_alias, schema, default_tables=N
 
         conds.append((not_op, op_id, val_unit, val1, val2))
 
-        if idx < len_ and (toks[idx] in CLAUSE_KEYWORDS or toks[idx] in (")", ";")):
+        if idx < len_ and (toks[idx] in CLAUSE_KEYWORDS or toks[idx] in (")", ";", "join")):
             break
 
         if idx < len_ and toks[idx] in COND_OPS:
@@ -428,6 +428,8 @@ def parse_from(toks, start_idx, tables_with_alias, schema):
             isBlock = True
             idx += 1
 
+        if idx < len_ and toks[idx] == 'join':
+            idx += 1  # skip join
         if toks[idx] == 'select':
             idx, sql = parse_sql(toks, idx, tables_with_alias, schema)
             table_units.append((TABLE_TYPE['sql'], sql))
@@ -601,7 +603,7 @@ def get_sql(schema, query):
 if __name__ == '__main__':
     schemas, dbs, tables = get_schemas_from_json("data/all_tables.json")
     data = load_data("data/train_all_augmented.json")
-    # entry = data[3451]
+    # entry = data[37]
     # query = entry["query"]
     # schema = schemas[entry["db_id"]]
     # table = tables[entry["db_id"]]
@@ -609,8 +611,12 @@ if __name__ == '__main__':
     # toks = tokenize(query)
     # tables_with_alias = get_tables_with_alias(schema.schema, toks)
     # _, sql = parse_sql(toks, 0, tables_with_alias, schema)
+    # print(sql)
     for ix, entry in tqdm.tqdm(enumerate(data)):
         query = entry["query"]
+        if entry["db_id"] == "assets_maintenance":
+            print("strange dataset")
+            continue
         schema = schemas[entry["db_id"]]
         table = tables[entry["db_id"]]
         schema = SchemaTable(schema, table)
