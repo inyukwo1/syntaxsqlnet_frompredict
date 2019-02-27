@@ -36,7 +36,7 @@ mkdir -p ${log_dir}
 
 export CUDA_VISIBLE_DEVICES=1
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial12 - lstm 1"
+echo "trial13 - hidden reduce trial12"
 
 module=from
 epoch=600
