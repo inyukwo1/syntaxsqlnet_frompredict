@@ -27,42 +27,34 @@ class FromPredictor(nn.Module):
                 dropout=0.3, bidirectional=True)
             self.encoded_num = N_h
 
-        self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+        self.c_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+                num_layers=N_depth, batch_first=True,
+                dropout=0.3, bidirectional=True)
+        self.t_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.schema_encoder = SchemaEncoder(N_h, 200)
-        self.schema_aggregator = SchemaAggregator(N_h)
+        self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+                num_layers=N_depth, batch_first=True,
+                dropout=0.3, bidirectional=True)
+        self.q_encode = nn.Sequential(nn.Linear(self.encoded_num * 2, N_h), nn.ReLU())
+        self.hs_encode = nn.Sequential(nn.Linear(self.encoded_num * 2, N_h), nn.ReLU())
 
-        self.q_table_num_att = nn.Linear(self.encoded_num, N_h)
-        self.q_col_num_att = nn.Linear(self.encoded_num, N_h)
-        self.hs_table_num_att = nn.Linear(N_h, N_h)
-        self.hs_col_num_att = nn.Linear(N_h, N_h)
+        self.t_self_layer1 = nn.Sequential(nn.Linear(self.encoded_num * 3, N_h), nn.ReLU())
+        self.t_self_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.t_self_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
 
-        self.schema_num_out = nn.Linear(N_h, N_h)
-        self.q_table_num_out = nn.Linear(N_h, N_h)
-        self.q_col_num_out = nn.Linear(N_h, N_h)
-        self.hs_table_num_out = nn.Linear(N_h, N_h)
-        self.hs_col_num_out = nn.Linear(N_h, N_h)
-        self.table_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 6))
+        self.tc_layer1 = nn.Sequential(nn.Linear(self.encoded_num * 4, N_h), nn.ReLU())
+        self.tc_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.tc_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
 
-        self.q_table_att = nn.Linear(self.encoded_num, N_h)
-        self.q_col_att = nn.Linear(self.encoded_num, N_h)
-        self.hs_table_att = nn.Linear(N_h, N_h)
-        self.hs_col_att = nn.Linear(N_h, N_h)
-
-        self.schema_out = nn.Linear(N_h, N_h)
-        self.q_table_out = nn.Linear(N_h, N_h)
-        self.q_col_out = nn.Linear(N_h, N_h)
-        self.hs_table_out = nn.Linear(N_h, N_h)
-        self.hs_col_out = nn.Linear(N_h, N_h)
-
-        self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
-
+        self.added_layer1 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.added_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.added_layer3 = nn.Linear(N_h, 1)
         if gpu:
             self.cuda()
 
-    def forward(self, parent_tables, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len,
+    def forward(self, candidate_schemas, q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len,
                 table_emb_var, table_len, table_name_len):
 
         max_q_len = max(q_len)
@@ -74,120 +66,109 @@ class FromPredictor(nn.Module):
             q_enc = self.q_bert(q_emb_var, q_len)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
+        c_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.c_lstm)
+        t_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.t_lstm)
         assert list(q_enc.size()) == [B, max_q_len, self.encoded_num]
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        table_tensors, col_tensors, batch_graph = self.schema_encoder(parent_tables, foreign_keys,
-                                                                      col_emb_var, col_name_len, col_len,
-                                                                      table_emb_var, table_name_len, table_len)
-        aggregated_schema = self.schema_aggregator(batch_graph)
-        SIZE_CHECK(table_tensors, [B, max_table_len, self.N_h])
-        SIZE_CHECK(col_tensors, [B, max_col_len, self.N_h])
 
-        q_table_weighted_num_num = seq_conditional_weighted_num(self.q_table_num_att, q_enc, q_len, table_tensors,
-                                                            table_len).sum(1)
-        hs_table_weighted_num_num = seq_conditional_weighted_num(self.hs_table_num_att, hs_enc, hs_len, table_tensors,
-                                                             table_len).sum(1)
-        q_col_weighted_num_num = seq_conditional_weighted_num(self.q_col_num_att, q_enc, q_len, col_tensors, col_len).sum(1)
-        hs_col_weighted_num_num = seq_conditional_weighted_num(self.hs_col_num_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
+        new_q_enc = []
+        new_h_enc = []
+        for b in range(len(q_enc)):
+            new_q_enc.append(torch.cat((q_enc[b, 0], q_enc[b, q_len[b]-1])))
+            new_h_enc.append(torch.cat((hs_enc[b, 0], hs_enc[b, hs_len[b]-1])))
+        new_q_enc = torch.stack(new_q_enc)
+        new_h_enc = torch.stack(new_h_enc)
+        q_enc = self.q_encode(new_q_enc)
+        h_enc = self.hs_encode(new_h_enc)
 
-        x = self.schema_out(F.relu(aggregated_schema))
-        x = x + self.q_table_out(q_table_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num_num)
-        x = x + self.q_col_out(q_col_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num_num)
-        table_num_score = self.table_num_out(x)
+        if self.gpu:
+            q_enc = q_enc.cpu()
+            h_enc = h_enc.cpu()
+            c_enc = c_enc.cpu()
+            t_enc = t_enc.cpu()
+        table_tensors_batch = []
+        table_col_tensors_batch = []
+        max_tab_seq_len = 0
+        max_col_tab_seq_len = 0
+        for b, candidate_schema in enumerate(candidate_schemas):
+            table_tensors_candidates = []
+            col_tensors_candidates = []
+            for schema in candidate_schema:
+                table_tensors = []
+                table_col_tensors = []
+                for tab in schema:
+                    table_tensors.append(torch.cat((t_enc[b, tab], q_enc[b], h_enc[b])))
+                    for col in schema[tab]:
+                        table_col_tensors.append(torch.cat((t_enc[b, tab], c_enc[b, col], q_enc[b], h_enc[b])))
+                table_tensors = torch.stack(table_tensors)
+                if table_col_tensors:
+                    table_col_tensors = torch.stack(table_col_tensors)
+                else:
+                    table_col_tensors = torch.zeros((1, self.N_h * 4))
+                table_tensors_candidates.append(table_tensors)
+                col_tensors_candidates.append(table_col_tensors)
+                if len(table_tensors) > max_tab_seq_len:
+                    max_tab_seq_len = len(table_tensors)
+                if len(table_col_tensors) > max_col_tab_seq_len:
+                    max_col_tab_seq_len = len(table_col_tensors)
+            table_tensors_batch.append(table_tensors_candidates)
+            table_col_tensors_batch.append(col_tensors_candidates)
+        for b in range(B):
+            for cand_idx in range(11):
+                cand_tensor = table_tensors_batch[b][cand_idx]
+                if len(cand_tensor) < max_tab_seq_len:
+                    table_tensors_batch[b][cand_idx] = torch.cat((cand_tensor, torch.zeros((max_tab_seq_len - len(cand_tensor), self.N_h * 3))))
+                col_cand_tensor = table_col_tensors_batch[b][cand_idx]
+                if len(col_cand_tensor) < max_col_tab_seq_len:
+                    table_col_tensors_batch[b][cand_idx] = torch.cat((col_cand_tensor, torch.zeros((max_col_tab_seq_len - len(col_cand_tensor), self.N_h * 4))))
+            table_tensors_batch[b] = torch.stack(table_tensors_batch[b])
+            table_col_tensors_batch[b] = torch.stack(table_col_tensors_batch[b])
+        table_tensors_batch = torch.stack(table_tensors_batch)
+        table_col_tensors_batch = torch.stack(table_col_tensors_batch)
+        if self.gpu:
+            table_tensors_batch = table_tensors_batch.cuda()
+            table_col_tensors_batch = table_col_tensors_batch.cuda()
 
+        SIZE_CHECK(table_tensors_batch, [B, 11, None, self.N_h * 3])
+        SIZE_CHECK(table_col_tensors_batch, [B, 11, None, self.N_h * 4])
+        table_tensors_batch = self.t_self_layer1(table_tensors_batch)
+        table_tensors_batch = self.t_self_layer2(table_tensors_batch)
+        table_tensors_batch = self.t_self_layer3(table_tensors_batch)
+        table_tensors_batch = torch.sum(table_tensors_batch, dim=2)
 
-        q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len).sum(1)
-        hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len).sum(1)
-        q_col_weighted_num = seq_conditional_weighted_num(self.q_col_att, q_enc, q_len, col_tensors, col_len).sum(1)
-        hs_col_weighted_num = seq_conditional_weighted_num(self.hs_col_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
+        table_col_tensors_batch = self.tc_layer1(table_col_tensors_batch)
+        table_col_tensors_batch = self.tc_layer2(table_col_tensors_batch)
+        table_col_tensors_batch = self.tc_layer3(table_col_tensors_batch)
+        table_col_tensors_batch = torch.sum(table_col_tensors_batch, dim=2)
+        table_tensors_batch = torch.add(table_tensors_batch, table_col_tensors_batch)
 
-        x = self.schema_out(F.relu(aggregated_schema))
-        x = x + self.q_table_out(q_table_weighted_num)
-        x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num)
-        x = x + self.q_col_out(q_col_weighted_num)
-        x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num)
+        SIZE_CHECK(table_tensors_batch, [B, 11, self.N_h])
+        table_tensors_batch = self.added_layer1(table_tensors_batch)
+        table_tensors_batch = self.added_layer2(table_tensors_batch)
+        table_tensors_batch = self.added_layer3(table_tensors_batch).squeeze()
 
-        SIZE_CHECK(x, [B, self.N_h])
-        table_score = (self.table_att(table_tensors) * x.unsqueeze(1)).sum(2)
-        SIZE_CHECK(table_score, [B, max_table_len])
-        for idx, num in enumerate(table_len.tolist()):
-            if num < max_table_len:
-                table_score[idx, num:] = -100
-
-        return table_num_score, table_score
+        return table_tensors_batch
 
     def loss(self, score, truth):
-        table_num_score, table_score = score
-        num_truth = [len(one_truth) - 1 for one_truth in truth]
-        data = torch.from_numpy(np.array(num_truth))
-        if self.gpu:
-            data = data.cuda()
-        truth_num_var = Variable(data)
-        loss = F.cross_entropy(table_num_score, truth_num_var)
-
-        B = len(truth)
-        SIZE_CHECK(table_score, [B, None])
-        max_table_len = list(table_score.size())[1]
-        label = []
-        for one_truth in truth:
-            label.append([1. if str(i) in one_truth else 0. for i in range(max_table_len)])
-        label = torch.from_numpy(np.array(label)).type(torch.FloatTensor)
-        if self.gpu:
-            label = label.cuda()
-        label = Variable(label)
-        loss += F.binary_cross_entropy_with_logits(table_score, label)
-        return loss
+        return F.binary_cross_entropy_with_logits(score, truth)
 
     def check_acc(self, score, truth):
-        num_err, err, tot_err = 0, 0, 0
-        B = len(truth)
-        pred = []
+        err = 0
         if self.gpu:
-            table_num_score, table_score = [sc.data.cpu().numpy() for sc in score]
+            score = score.data.cpu().numpy()
+            truth = truth.cpu().numpy()
         else:
-            table_num_score, table_score = [sc.data.numpy() for sc in score]
-
-        for b in range(B):
-            cur_pred = {}
-            table_num = np.argmax(table_num_score[b]) + 1
-            cur_pred["table_num"] = table_num
-            cur_pred["table"] = np.argsort(-table_score[b])[:table_num]
-            pred.append(cur_pred)
-        for b, (p, t) in enumerate(zip(pred, truth)):
-            table_num, tab = p['table_num'], p['table']
-            flag = True
-            if table_num != len(t): # double check truth format and for test cases
-                num_err += 1
-                flag = False
-            fk_list = []
-            regular = []
-            for l in t:
-                if isinstance(l, list):
-                    fk_list.append(l)
-                else:
-                    regular.append(l)
-
-            if flag: #double check
-                for c in tab:
-                    for fk in fk_list:
-                        if c in fk:
-                            fk_list.remove(fk)
-                    for r in regular:
-                        if c == r:
-                            regular.remove(r)
-
-                if len(fk_list) != 0 or len(regular) != 0:
-                    err += 1
-                    flag = False
-
-            if not flag:
-                tot_err += 1
-
-        return np.array((num_err, err, tot_err))
+            score = score.data.numpy()
+            truth = truth.numpy()
+        score = np.argmax(score, axis=1)
+        truth = np.argmax(truth, axis=1)
+        for b in range(len(score)):
+            if score[b] != truth[b]:
+                err+=1
+        return err
 
     def score_to_tables(self, score):
+        #TODO
         if self.gpu:
             table_num_score, table_score = [sc.data.cpu().numpy() for sc in score]
         else:

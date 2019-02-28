@@ -6,7 +6,10 @@ import os
 import signal
 from preprocess_train_dev_data import get_table_dict
 import tqdm
+import random
+from random import shuffle
 import pandas as pd
+import torch
 import os.path
 import pickle
 
@@ -24,6 +27,57 @@ def to_batch_seq(data, idxes, st, ed):
         history.append(data[idxes[i]]["history"])
         label.append(data[idxes[i]]["label"])
     return q_seq,history,label
+
+
+def generate_from_candidates(par_tab_nums, foreign_keys, real_froms):
+    B = len(par_tab_nums)
+    def extract_from(par_tab_num, foreign_key):
+        max_par_tab_num = par_tab_num[-1]
+        synthetic_from = dict()
+        start_table = random.randint(0, max_par_tab_num)
+        synthetic_from[start_table] = set()
+        while random.randint(0, 100) < 50:
+            shuffle(foreign_key)
+            for pair in foreign_key:
+                parent_1 = par_tab_num[pair[0]]
+                parent_2 = par_tab_num[pair[1]]
+                if parent_1 in synthetic_from and parent_2 not in synthetic_from:
+                    synthetic_from[parent_1].add(pair[0])
+                    synthetic_from[parent_2] = set()
+                    synthetic_from[parent_2].add(pair[1])
+                    break
+
+                elif parent_2 in synthetic_from and parent_1 not in synthetic_from:
+                    synthetic_from[parent_2].add(pair[1])
+                    synthetic_from[parent_1] = set()
+                    synthetic_from[parent_1].add(pair[0])
+                    break
+
+        for tab in synthetic_from:
+            synthetic_from[tab] = list(synthetic_from[tab])
+            synthetic_from[tab].sort()
+        return synthetic_from
+
+    from_candidates = []
+    labels = []
+    for par_tab_num, foreign_key, real_from in zip(par_tab_nums, foreign_keys, real_froms):
+        candidates = []
+        while len(candidates) < 10:  # HARD-CODED
+            synthetic_from = extract_from(par_tab_num, foreign_key)
+            if synthetic_from != real_from:
+                candidates.append(synthetic_from)
+        candidates.append(real_from)
+        label = [0.] * 10 + [1.]
+        together = list(zip(candidates, label))
+        shuffle(together)
+        candidates, label = zip(*together)
+        from_candidates.append(candidates)
+        labels.append(label)
+    labels = torch.from_numpy(np.array(labels, dtype=np.float32))
+    if torch.cuda.is_available():
+        labels = labels.cuda()
+    return from_candidates, labels
+
 
 # CHANGED
 def to_batch_tables(data, idxes, st,ed, table_type):
@@ -80,6 +134,11 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
 ## used for training in train.py
 def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert, use_from):
     model.train()
+    newdata = []
+    for entry in data:
+        if len(entry["ts"][0]) > 1:
+            newdata.append(entry)
+    data = newdata
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
     st = 0
@@ -180,10 +239,18 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
 
         elif component == "from":
+            real_froms = []
+            for one_from in label:
+                real_from = dict()
+                for tab in one_from:
+                    real_from[int(tab)] = one_from[tab]
+                    real_from[int(tab)].sort()
+                real_froms.append(real_from)
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
-            score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
+            candidate_schemas, label = generate_from_candidates(par_tab_nums, foreign_keys, real_froms)
+            score = model.forward(candidate_schemas, q_emb_var, q_len, hs_emb_var, hs_len,
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         loss = model.loss(score, label)
         # print("loss {}".format(loss.data.cpu().numpy()))
@@ -313,19 +380,21 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         elif component == "andor":
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
         elif component == "from":
-            real_label = []
-            for one_label in label:
-                tab_list = list(one_label.keys())
-                tab_list = [int(key) for key in tab_list]
-                real_label.append(tab_list)
-            label = real_label
+            real_froms = []
+            for one_from in label:
+                real_from = dict()
+                for tab in one_from:
+                    real_from[int(tab)] = one_from[tab]
+                    real_from[int(tab)].sort()
+                real_froms.append(real_from)
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
-            score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
+            candidate_schemas, label = generate_from_candidates(par_tab_nums, foreign_keys, real_froms)
+            score = model.forward(candidate_schemas, q_emb_var, q_len, hs_emb_var, hs_len,
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         # print("label {}".format(label))
-        if component in ("agg","col","keyword","op", "from"):
+        if component in ("agg","col","keyword","op"):
             num_err, p_err, err = model.check_acc(score, label)
             total_number_error += num_err
             total_p_error += p_err
