@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.nn.modules import BatchNorm1d
 from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
 from pytorch_pretrained_bert import BertModel
 from models.schema_encoder import SchemaEncoder, SchemaAggregator
@@ -43,14 +44,23 @@ class FromPredictor(nn.Module):
         self.t_self_layer1 = nn.Sequential(nn.Linear(self.encoded_num * 3, N_h), nn.ReLU())
         self.t_self_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
         self.t_self_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.t_self_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.t_self_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
 
         self.tc_layer1 = nn.Sequential(nn.Linear(self.encoded_num * 4, N_h), nn.ReLU())
         self.tc_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
         self.tc_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.tc_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.tc_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
 
         self.added_layer1 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.batchnorm1 = BatchNorm1d(11)
         self.added_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.added_layer3 = nn.Linear(N_h, 1)
+        self.batchnorm2 = BatchNorm1d(11)
+        self.added_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.batchnorm3 = BatchNorm1d(11)
+        self.added_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.added_layer5 = nn.Linear(N_h, 1)
         if gpu:
             self.cuda()
 
@@ -131,21 +141,30 @@ class FromPredictor(nn.Module):
 
         SIZE_CHECK(table_tensors_batch, [B, 11, None, self.N_h * 3])
         SIZE_CHECK(table_col_tensors_batch, [B, 11, None, self.N_h * 4])
-        table_tensors_batch = self.t_self_layer1(table_tensors_batch)
-        table_tensors_batch = self.t_self_layer2(table_tensors_batch)
-        table_tensors_batch = self.t_self_layer3(table_tensors_batch)
-        table_tensors_batch = torch.sum(table_tensors_batch, dim=2)
+        x1 = self.t_self_layer1(table_tensors_batch)
+        x2 = self.t_self_layer2(x1)
+        x3 = self.t_self_layer3(x2) + x2
+        x4 = self.t_self_layer4(x3) + x1
+        x5 = self.t_self_layer5(x4)
+        table_tensors_batch = torch.sum(x5, dim=2)
 
-        table_col_tensors_batch = self.tc_layer1(table_col_tensors_batch)
-        table_col_tensors_batch = self.tc_layer2(table_col_tensors_batch)
-        table_col_tensors_batch = self.tc_layer3(table_col_tensors_batch)
-        table_col_tensors_batch = torch.sum(table_col_tensors_batch, dim=2)
+        x1 = self.tc_layer1(table_col_tensors_batch)
+        x2 = self.tc_layer2(x1)
+        x3 = self.tc_layer3(x2) + x2
+        x4 = self.tc_layer4(x3) + x1
+        x5 = self.tc_layer5(x4) + x3
+        table_col_tensors_batch = torch.sum(x5, dim=2)
         table_tensors_batch = torch.add(table_tensors_batch, table_col_tensors_batch)
 
         SIZE_CHECK(table_tensors_batch, [B, 11, self.N_h])
-        table_tensors_batch = self.added_layer1(table_tensors_batch)
-        table_tensors_batch = self.added_layer2(table_tensors_batch)
-        table_tensors_batch = self.added_layer3(table_tensors_batch).squeeze()
+        x1 = self.added_layer1(table_tensors_batch)
+        x1 = self.batchnorm1(x1)
+        x2 = self.added_layer2(x1)
+        x2 = self.batchnorm2(x2) + x1
+        x3 = self.added_layer3(x2)
+        x3 = self.batchnorm3(x3) + x2
+        table_tensors_batch = self.added_layer4(x3)
+        table_tensors_batch = self.added_layer5(table_tensors_batch).squeeze()
 
         return table_tensors_batch
 
