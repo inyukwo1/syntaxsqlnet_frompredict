@@ -2,7 +2,7 @@
 
 # ## full + aug
  hs=full
- tbl=std
+ tbl=no
  d_type="_augment_from"
 
 # ## - aug
@@ -28,7 +28,7 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_trial15"
+save_dir="${data_root}/saved_models_trial16"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
@@ -36,7 +36,7 @@ mkdir -p ${log_dir}
 
 export CUDA_VISIBLE_DEVICES=6
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 15 - classification problem"
+echo "trial 16 - notable"
 
 module=from
 epoch=600
