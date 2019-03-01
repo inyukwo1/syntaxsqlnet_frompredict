@@ -22,13 +22,13 @@ class FromPredictor(nn.Module):
         if bert:
             self.q_bert = bert
             self.encoded_num = 768
-            self.q_encode = nn.Sequential(nn.Linear(self.encoded_num, N_h), nn.ReLU())
+            self.q_encode = nn.Linear(self.encoded_num, N_h)
         else:
             self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
             self.encoded_num = N_h
-            self.q_encode = nn.Sequential(nn.Linear(self.encoded_num * 2, N_h), nn.ReLU())
+            self.q_encode = nn.Linear(self.encoded_num, N_h)
 
         self.c_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
@@ -40,7 +40,7 @@ class FromPredictor(nn.Module):
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
-        self.hs_encode = nn.Sequential(nn.Linear(N_h * 2, N_h), nn.ReLU())
+        self.hs_encode = nn.Linear(N_h, N_h)
 
         self.t_self_layer1 = nn.Sequential(nn.Linear(N_h * 3, N_h), nn.ReLU())
         self.t_self_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
@@ -81,23 +81,14 @@ class FromPredictor(nn.Module):
         B = len(q_len)
         if self.use_bert:
             q_enc = self.q_bert(q_emb_var, q_len)
-            new_q_enc = q_enc[:, 0 ,:].view(B, 768)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb_var, q_len)
-            new_q_enc = []
-            for b in range(len(q_enc)):
-                new_q_enc.append(torch.cat((q_enc[b, 0], q_enc[b, q_len[b] - 1])))
-            new_q_enc = torch.stack(new_q_enc)
         c_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.c_lstm)
         t_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.t_lstm)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
 
-        new_h_enc = []
-        for b in range(len(q_enc)):
-            new_h_enc.append(torch.cat((hs_enc[b, 0], hs_enc[b, hs_len[b] - 1])))
-        new_h_enc = torch.stack(new_h_enc)
-        h_enc = self.hs_encode(new_h_enc)
-        q_enc = self.q_encode(new_q_enc)
+        h_enc = seq_conditional_weighted_num(self.hs_encode, hs_enc, hs_len, c_enc, col_len).sum(1)
+        q_enc = seq_conditional_weighted_num(self.q_encode, q_enc, q_len, c_enc, col_len).sum(1)
 
         if self.gpu:
             q_enc = q_enc.cpu()

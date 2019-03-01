@@ -28,15 +28,15 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_trial20"
+save_dir="${data_root}/saved_models_trial21"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=2
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 20 - subcol relation aedded"
+echo "trial 21 - coattention to q and hs"
 
 module=from
 epoch=600
@@ -51,6 +51,7 @@ python train.py \
   ${toy} \
   > "${log_dir}/train_${d_type}_hs=${hs}_tbl=${tbl}_${module}_${DATE}.txt"  &
 
+echo "process num:: " $!
 #export CUDA_VISIBLE_DEVICES=1
 #epoch=300
 #for module in  root_tem
