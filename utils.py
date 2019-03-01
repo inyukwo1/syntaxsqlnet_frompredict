@@ -250,7 +250,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
             candidate_schemas, label = generate_from_candidates(par_tab_nums, foreign_keys, real_froms)
-            score = model.forward(candidate_schemas, q_emb_var, q_len, hs_emb_var, hs_len,
+            score = model.forward(par_tab_nums, candidate_schemas, q_emb_var, q_len, hs_emb_var, hs_len,
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         loss = model.loss(score, label)
         # print("loss {}".format(loss.data.cpu().numpy()))
@@ -391,7 +391,7 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
             candidate_schemas, label = generate_from_candidates(par_tab_nums, foreign_keys, real_froms)
-            score = model.forward(candidate_schemas, q_emb_var, q_len, hs_emb_var, hs_len,
+            score = model.forward(par_tab_nums, candidate_schemas, q_emb_var, q_len, hs_emb_var, hs_len,
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         # print("label {}".format(label))
         if component in ("agg","col","keyword","op"):
