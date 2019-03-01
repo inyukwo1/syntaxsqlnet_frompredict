@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.nn.modules import BatchNorm1d
+from torch.nn.modules import BatchNorm1d, Dropout
 from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
 from pytorch_pretrained_bert import BertModel
 from models.schema_encoder import SchemaEncoder, SchemaAggregator
@@ -42,31 +42,34 @@ class FromPredictor(nn.Module):
                 dropout=0.3, bidirectional=True)
         self.hs_encode = nn.Sequential(nn.Linear(N_h * 2, N_h), nn.ReLU())
 
-        self.t_self_layer1 = nn.Sequential(nn.Linear(N_h * 3, N_h), nn.ReLU())
-        self.t_self_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.t_self_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.t_self_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.t_self_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.q_encode_dropout = Dropout()
+        self.q_hs_dropout = Dropout()
 
-        self.tc_layer1 = nn.Sequential(nn.Linear(N_h * 4, N_h), nn.ReLU())
-        self.tc_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.tc_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.tc_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.tc_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.t_self_layer1 = nn.Sequential(nn.Linear(N_h * 3, N_h), nn.ReLU(), Dropout())
+        self.t_self_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.t_self_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.t_self_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.t_self_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
 
-        self.tsc_layer1 = nn.Sequential(nn.Linear(N_h * 4, N_h), nn.ReLU())
-        self.tsc_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.tsc_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.tsc_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-        self.tsc_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.tc_layer1 = nn.Sequential(nn.Linear(N_h * 4, N_h), nn.ReLU(), Dropout())
+        self.tc_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.tc_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.tc_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.tc_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
 
-        self.added_layer1 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.tsc_layer1 = nn.Sequential(nn.Linear(N_h * 4, N_h), nn.ReLU(), Dropout())
+        self.tsc_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.tsc_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.tsc_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+        self.tsc_layer5 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
+
+        self.added_layer1 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
         self.batchnorm1 = BatchNorm1d(11)
-        self.added_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.added_layer2 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
         self.batchnorm2 = BatchNorm1d(11)
-        self.added_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.added_layer3 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
         self.batchnorm3 = BatchNorm1d(11)
-        self.added_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
+        self.added_layer4 = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU(), Dropout())
         self.added_layer5 = nn.Linear(N_h, 1)
         if gpu:
             self.cuda()
@@ -96,7 +99,9 @@ class FromPredictor(nn.Module):
         for b in range(len(q_enc)):
             new_h_enc.append(torch.cat((hs_enc[b, 0], hs_enc[b, hs_len[b] - 1])))
         new_h_enc = torch.stack(new_h_enc)
+        new_h_enc = self.q_hs_dropout(new_h_enc)
         h_enc = self.hs_encode(new_h_enc)
+        new_q_enc = self.q_encode_dropout(new_q_enc)
         q_enc = self.q_encode(new_q_enc)
 
         if self.gpu:
