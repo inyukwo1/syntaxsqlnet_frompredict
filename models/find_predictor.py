@@ -166,6 +166,7 @@ class FindPredictor(nn.Module):
             fk_list = []
             regular = []
             for l in t:
+                l = int(l)
                 if isinstance(l, list):
                     fk_list.append(l)
                 else:

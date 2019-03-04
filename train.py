@@ -55,7 +55,7 @@ if __name__ == '__main__':
         BATCH_SIZE=20
     else:
         USE_SMALL=False
-        BATCH_SIZE=32
+        BATCH_SIZE=8
 
     if torch.cuda.is_available():
         GPU = True

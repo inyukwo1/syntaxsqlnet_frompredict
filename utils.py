@@ -79,9 +79,15 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
 ## used for training in train.py
 def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert):
     model.train()
+    newdata = []
+    for entry in data:
+        if len(entry["ts"][0]) > 1:
+            newdata.append(entry)
+    data = newdata
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
     st = 0
+    total_err = 0
 
     for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
         ed = st+batch_size if st+batch_size < len(perm) else len(perm)
@@ -183,6 +189,10 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         loss = model.loss(score, label)
+
+        num_err, p_err, err = model.check_acc(score, label)
+        total_err += err
+
         # print("loss {}".format(loss.data.cpu().numpy()))
         if gpu:
             cum_loss += loss.data.cpu().numpy()*(ed - st)
@@ -197,6 +207,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
             optimizer_bert.step()
 
         st = ed
+    print(("Train {} acc total acc: {}".format(component, 1 - total_err * 1.0 / len(data))), flush=True)
 
     return cum_loss / len(data)
 
