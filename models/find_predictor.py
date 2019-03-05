@@ -52,14 +52,8 @@ class FindPredictor(nn.Module):
         self.hs_col_att = nn.Linear(N_h, N_h)
 
         self.schema_out = nn.Linear(N_h, N_h)
-        self.q_table_out = nn.Linear(N_h, N_h)
-        self.q_col_out = nn.Linear(N_h, N_h)
-        self.hs_table_out = nn.Linear(N_h, N_h)
-        self.hs_col_out = nn.Linear(N_h, N_h)
-
-        self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
-
-
+        self.q_hs_table_out = nn.Sequential(nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
+        self.q_hs_col_out = nn.Sequential(nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
         if gpu:
             self.cuda()
 
@@ -91,36 +85,37 @@ class FindPredictor(nn.Module):
         q_col_weighted_num_num = seq_conditional_weighted_num(self.q_col_num_att, q_enc, q_len, col_tensors, col_len).sum(1)
         hs_col_weighted_num_num = seq_conditional_weighted_num(self.hs_col_num_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
 
-        x = self.schema_out(F.relu(aggregated_schema))
-        x = x + self.q_table_out(q_table_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num_num)
-        x = x + self.q_col_out(q_col_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num_num)
+        x = self.schema_num_out(F.relu(aggregated_schema))
+        x = x + self.q_table_num_out(q_table_weighted_num_num)
+        x = x + int(self.use_hs) * self.hs_table_num_out(hs_table_weighted_num_num)
+        x = x + self.q_col_num_out(q_col_weighted_num_num)
+        x = x + int(self.use_hs) * self.hs_col_num_out(hs_col_weighted_num_num)
         table_num_score = self.table_num_out(x)
 
+        q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len)
+        SIZE_CHECK(q_table_weighted_num, [B, max_table_len, self.N_h])
+        hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len)
+        SIZE_CHECK(q_table_weighted_num, [B, max_table_len, self.N_h])
+        q_col_weighted_num = seq_conditional_weighted_num(self.q_col_att, q_enc, q_len, col_tensors, col_len)
+        hs_col_weighted_num = seq_conditional_weighted_num(self.hs_col_att, hs_enc, hs_len, col_tensors, col_len)
 
-        q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len).sum(1)
-        hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len).sum(1)
-        q_col_weighted_num = seq_conditional_weighted_num(self.q_col_att, q_enc, q_len, col_tensors, col_len).sum(1)
-        hs_col_weighted_num = seq_conditional_weighted_num(self.hs_col_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
-
-        x = self.schema_out(F.relu(aggregated_schema))
-        x = x + self.q_table_out(q_table_weighted_num)
-        x = x + int(self.use_hs) * self.hs_table_out(hs_table_weighted_num)
-        x = x + self.q_col_out(q_col_weighted_num)
-        x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num)
-
-        SIZE_CHECK(x, [B, self.N_h])
-        table_score = (self.table_att(table_tensors) * x.unsqueeze(1)).sum(2)
+        x = torch.cat((q_table_weighted_num, hs_table_weighted_num, self.schema_out(F.relu(aggregated_schema)).unsqueeze(1).expand(-1, max_table_len, -1)), dim=2)
+        table_score = self.q_hs_table_out(x).sum(2)
         SIZE_CHECK(table_score, [B, max_table_len])
         for idx, num in enumerate(table_len.tolist()):
             if num < max_table_len:
                 table_score[idx, num:] = -100
 
-        return table_num_score, table_score
+        x = torch.cat((q_col_weighted_num, hs_col_weighted_num, self.schema_out(F.relu(aggregated_schema)).unsqueeze(1).expand(-1, max_col_len, -1)), dim=2)
+        col_score = self.q_hs_col_out(x).sum(2)
+        for idx, num in enumerate(col_len.tolist()):
+            if num < max_col_len:
+                col_score[idx, num:] = -100
+
+        return table_num_score, table_score, col_score
 
     def loss(self, score, truth):
-        table_num_score, table_score = score
+        table_num_score, table_score, col_score = score
         num_truth = [len(one_truth) - 1 for one_truth in truth]
         data = torch.from_numpy(np.array(num_truth))
         if self.gpu:
@@ -146,9 +141,9 @@ class FindPredictor(nn.Module):
         B = len(truth)
         pred = []
         if self.gpu:
-            table_num_score, table_score = [sc.data.cpu().numpy() for sc in score]
+            table_num_score, table_score, col_score = [sc.data.cpu().numpy() for sc in score]
         else:
-            table_num_score, table_score = [sc.data.numpy() for sc in score]
+            table_num_score, table_score, col_score = [sc.data.numpy() for sc in score]
 
         for b in range(B):
             cur_pred = {}
