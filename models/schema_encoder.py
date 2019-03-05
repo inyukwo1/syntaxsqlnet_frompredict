@@ -123,7 +123,6 @@ class SchemaEncoder(nn.Module):
 
         self.layer1 = NGCNLayer(lower_dim, lower_dim, 6)
         self.layer2 = NGCNLayer(lower_dim, lower_dim, 6)
-        self.layer3 = NGCNLayer(lower_dim, lower_dim, 6)
         self.upper = nn.Sequential(nn.Linear(lower_dim, hidden_dim), nn.ReLU())
         self.skipper = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
 
@@ -147,7 +146,6 @@ class SchemaEncoder(nn.Module):
         origin_ndata = bg_origin.ndata['h']
         self.layer1(bg)
         self.layer2(bg)
-        self.layer3(bg)
         graph_list = dgl.unbatch(bg)
         table_tensors = []
         col_tensors = []
