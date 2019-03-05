@@ -126,14 +126,24 @@ class FindPredictor(nn.Module):
         B = len(truth)
         SIZE_CHECK(table_score, [B, None])
         max_table_len = list(table_score.size())[1]
+        max_col_len = list(col_score.size())[1]
         label = []
+        fcol_label = []
         for one_truth in truth:
             label.append([1. if str(i) in one_truth else 0. for i in range(max_table_len)])
+            one_f_cols = []
+            for flist in one_truth.values():
+                one_f_cols += flist
+            fcol_label.append([1. if i in one_f_cols else 0. for i in range(max_col_len)])
         label = torch.from_numpy(np.array(label)).type(torch.FloatTensor)
+        fcol_label = torch.from_numpy(np.array(fcol_label)).type(torch.FloatTensor)
         if self.gpu:
             label = label.cuda()
+            fcol_label = fcol_label.cuda()
         label = Variable(label)
+        fcol_label = Variable(fcol_label)
         loss += F.binary_cross_entropy_with_logits(table_score, label)
+        loss += F.binary_cross_entropy_with_logits(col_score, fcol_label)
         return loss
 
     def check_acc(self, score, truth):
