@@ -99,32 +99,23 @@ class NGCNLayer(nn.Module):
 class SchemaAggregator(nn.Module):
     def __init__(self, hidden_dim):
         super(SchemaAggregator, self).__init__()
-        self.aggregator = nn.Linear(hidden_dim, hidden_dim)
+        self.aggregator = NGCNLayer(hidden_dim, hidden_dim, 6)
 
     def forward(self, bg):
-        graph_list = dgl.unbatch(bg)
-        batch = []
-        for graph in graph_list:
-            ndata = graph.ndata['h']
-            x = self.aggregator(ndata).sum(0)
-            x = F.relu(x)
-            batch.append(x)
-        batch = torch.stack(batch)
-        return batch
+        self.aggregator(bg)
+        return dgl.mean_nodes(bg, 'h')
 
 
 class SchemaEncoder(nn.Module):
-    def __init__(self, hidden_dim, lower_dim):
+    def __init__(self, hidden_dim):
         super(SchemaEncoder, self).__init__()
         self.col_lstm = nn.LSTM(input_size=hidden_dim, hidden_size=hidden_dim//2,
                 num_layers=1, batch_first=True,
                 dropout=0.3, bidirectional=True)
-        self.lower = nn.Sequential(nn.Linear(hidden_dim, lower_dim), nn.ReLU())
 
-        self.layer1 = NGCNLayer(lower_dim, lower_dim, 6)
-        self.layer2 = NGCNLayer(lower_dim, lower_dim, 6)
-        self.upper = nn.Sequential(nn.Linear(lower_dim, hidden_dim), nn.ReLU())
-        self.skipper = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
+        self.layer1 = NGCNLayer(hidden_dim, hidden_dim, 6)
+        self.layer2 = NGCNLayer(hidden_dim, hidden_dim, 6)
+        self.layer3 = NGCNLayer(hidden_dim, hidden_dim, 6)
 
     def forward(self, batch_par_tab_nums, batch_foreign_keys,
                 col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len):
@@ -134,18 +125,15 @@ class SchemaEncoder(nn.Module):
             if torch.cuda.is_available():
                 padding = padding.cuda()
             return torch.cat((tensor, padding), 0)
-        origin_batch_col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
-        origin_batch_tab_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.col_lstm)
-        batch_col_enc = self.lower(origin_batch_col_enc)
-        batch_tab_enc = self.lower(origin_batch_tab_enc)
+        batch_col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
+        batch_tab_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.col_lstm)
         # (batch size, max seq len, hidden)
-        b, max_col_len, hidden_dim = list(origin_batch_col_enc.size())
-        b, max_tab_len, hidden_dim = list(origin_batch_tab_enc.size())
-        bg_origin  = batch_table_to_dgl_batch_graph(batch_par_tab_nums, batch_foreign_keys, origin_batch_col_enc, origin_batch_tab_enc)
+        b, max_col_len, hidden_dim = list(batch_col_enc.size())
+        b, max_tab_len, hidden_dim = list(batch_tab_enc.size())
         bg = batch_table_to_dgl_batch_graph(batch_par_tab_nums, batch_foreign_keys, batch_col_enc, batch_tab_enc)
-        origin_ndata = bg_origin.ndata['h']
         self.layer1(bg)
         self.layer2(bg)
+        self.layer3(bg)
         graph_list = dgl.unbatch(bg)
         table_tensors = []
         col_tensors = []
@@ -157,18 +145,8 @@ class SchemaEncoder(nn.Module):
             col_tensors.append(add_padding(table_col_tensors[col_id_offset:], max_col_len))
         table_tensors = torch.stack(table_tensors)
         col_tensors = torch.stack(col_tensors)
-        table_tensors = self.upper(table_tensors) + self.skipper(origin_batch_tab_enc)
-        col_tensors = self.upper(col_tensors) + self.skipper(origin_batch_col_enc)
-        bg.ndata['h'] = self.upper(bg.ndata['h']) + self.skipper(origin_ndata)
         return table_tensors, col_tensors, bg
-    #
-    # def forward(self, batch_par_tab_nums, batch_foreign_keys,
-    #             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len):
-    #     origin_batch_col_enc, _ = col_tab_name_encode(col_emb_var, col_name_len, col_len, self.col_lstm)
-    #     origin_batch_tab_enc, _ = col_tab_name_encode(table_emb_var, table_name_len, table_len, self.col_lstm)
-    #     bg = batch_table_to_dgl_batch_graph(batch_par_tab_nums, batch_foreign_keys, origin_batch_col_enc, origin_batch_tab_enc)
-    #
-    #     return origin_batch_tab_enc, origin_batch_col_enc, bg
+
 
 
 

@@ -31,7 +31,7 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.schema_encoder = SchemaEncoder(N_h, 40)
+        self.schema_encoder = SchemaEncoder(N_h)
         self.schema_aggregator = SchemaAggregator(N_h)
 
         self.q_table_num_att = nn.Linear(self.encoded_num, N_h)
@@ -57,8 +57,7 @@ class FindPredictor(nn.Module):
         self.hs_table_out = nn.Linear(N_h, N_h)
         self.hs_col_out = nn.Linear(N_h, N_h)
 
-        self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h), nn.Sigmoid())
-
+        self.table_att = nn.Sequential(nn.Tanh(), nn.Linear(N_h, N_h))
 
         if gpu:
             self.cuda()
@@ -97,7 +96,6 @@ class FindPredictor(nn.Module):
         x = x + self.q_col_out(q_col_weighted_num_num)
         x = x + int(self.use_hs) * self.hs_col_out(hs_col_weighted_num_num)
         table_num_score = self.table_num_out(x)
-
 
         q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len).sum(1)
         hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len).sum(1)
