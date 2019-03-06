@@ -82,7 +82,7 @@ class NGCNLayer(nn.Module):
 
         def message_func(edges):
             w = weight[edges.data['rel_type']]
-            msg = torch.bmm(edges.src['h'].unsqueeze(1), w).squeeze()
+            msg = F.dropout(torch.bmm(F.dropout(edges.src['h']).unsqueeze(1), w)).squeeze()
             return {'msg': msg}
 
         def apply_func(nodes):
@@ -123,9 +123,8 @@ class SchemaEncoder(nn.Module):
 
         self.layer1 = NGCNLayer(lower_dim, lower_dim, 6)
         self.layer2 = NGCNLayer(lower_dim, lower_dim, 6)
-        self.layer3 = NGCNLayer(lower_dim, lower_dim, 6)
-        self.upper = nn.Sequential(nn.Linear(lower_dim, hidden_dim), nn.ReLU())
-        self.skipper = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
+        self.upper = nn.Sequential(nn.Dropout(), nn.Linear(lower_dim, hidden_dim), nn.ReLU())
+        self.skipper = nn.Sequential(nn.Dropout(), nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
 
     def forward(self, batch_par_tab_nums, batch_foreign_keys,
                 col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len):
@@ -147,7 +146,6 @@ class SchemaEncoder(nn.Module):
         origin_ndata = bg_origin.ndata['h']
         self.layer1(bg)
         self.layer2(bg)
-        self.layer3(bg)
         graph_list = dgl.unbatch(bg)
         table_tensors = []
         col_tensors = []

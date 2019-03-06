@@ -52,8 +52,8 @@ class FindPredictor(nn.Module):
         self.hs_col_att = nn.Linear(N_h, N_h)
 
         self.schema_out = nn.Linear(N_h, N_h)
-        self.q_hs_table_out = nn.Sequential(nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
-        self.q_hs_col_out = nn.Sequential(nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
+        self.q_hs_table_out = nn.Sequential(nn.Dropout(), nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Dropout(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Dropout(), nn.Linear(N_h, N_h))
+        self.q_hs_col_out = nn.Sequential(nn.Dropout(), nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Dropout(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Dropout(), nn.Linear(N_h, N_h))
         if gpu:
             self.cuda()
 
@@ -100,6 +100,7 @@ class FindPredictor(nn.Module):
         hs_col_weighted_num = seq_conditional_weighted_num(self.hs_col_att, hs_enc, hs_len, col_tensors, col_len)
 
         x = torch.cat((q_table_weighted_num, hs_table_weighted_num, self.schema_out(F.relu(aggregated_schema)).unsqueeze(1).expand(-1, max_table_len, -1)), dim=2)
+        x = F.dropout(x)
         table_score = self.q_hs_table_out(x).sum(2)
         SIZE_CHECK(table_score, [B, max_table_len])
         for idx, num in enumerate(table_len.tolist()):
@@ -107,6 +108,7 @@ class FindPredictor(nn.Module):
                 table_score[idx, num:] = -100
 
         x = torch.cat((q_col_weighted_num, hs_col_weighted_num, self.schema_out(F.relu(aggregated_schema)).unsqueeze(1).expand(-1, max_col_len, -1)), dim=2)
+        x = F.dropout(x)
         col_score = self.q_hs_col_out(x).sum(2)
         for idx, num in enumerate(col_len.tolist()):
             if num < max_col_len:
