@@ -160,9 +160,10 @@ class FindPredictor(nn.Module):
             table_num = np.argmax(table_num_score[b]) + 1
             cur_pred["table_num"] = table_num
             cur_pred["table"] = np.argsort(-table_score[b])[:table_num]
+            cur_pred["numright_table"] = np.argsort(-table_score[b])[:len(truth[b])]
             pred.append(cur_pred)
         for b, (p, t) in enumerate(zip(pred, truth)):
-            table_num, tab = p['table_num'], p['table']
+            table_num, tab, rtab = p['table_num'], p['table'], p["numright_table"]
             flag = True
             if table_num != len(t): # double check truth format and for test cases
                 num_err += 1
@@ -176,20 +177,11 @@ class FindPredictor(nn.Module):
                     fk_list.append(l)
                 else:
                     regular.append(l)
-
-            if flag: #double check
-                for c in tab:
-                    for fk in fk_list:
-                        if c in fk:
-                            fk_list.remove(fk)
-                    for r in regular:
-                        if c == r:
-                            regular.remove(r)
-
-                if len(fk_list) != 0 or len(regular) != 0:
-                    err += 1
-                    flag = False
-
+            if set(rtab) != set(regular):
+                err += 1
+                flag = False
+            if set(tab) != set(regular):
+                flag = False
             if not flag:
                 tot_err += 1
 

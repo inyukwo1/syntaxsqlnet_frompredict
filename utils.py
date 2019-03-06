@@ -340,7 +340,7 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             total_error += err
         st = ed
 
-    if component in ("agg","col","keyword","op"):
+    if component in ("agg","col","keyword","op", "from"):
         print(("Dev {} acc number predict acc:{} partial acc: {} total acc: {}".format(component,1 - total_number_error*1.0/len(data),1 - total_p_error*1.0/len(data),  1 - total_error*1.0/len(data))))
         return 1 - total_error*1.0/len(data)
     else:
