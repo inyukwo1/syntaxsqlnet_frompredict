@@ -31,20 +31,8 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.schema_encoder = SchemaEncoder(N_h, N_h)
+        self.schema_encoder = SchemaEncoder(N_word, N_h, N_h)
         self.schema_aggregator = SchemaAggregator(N_h)
-
-        self.q_table_num_att = nn.Linear(self.encoded_num, N_h)
-        self.q_col_num_att = nn.Linear(self.encoded_num, N_h)
-        self.hs_table_num_att = nn.Linear(N_h, N_h)
-        self.hs_col_num_att = nn.Linear(N_h, N_h)
-
-        self.schema_num_out = nn.Linear(N_h, N_h)
-        self.q_table_num_out = nn.Linear(N_h, N_h)
-        self.q_col_num_out = nn.Linear(N_h, N_h)
-        self.hs_table_num_out = nn.Linear(N_h, N_h)
-        self.hs_col_num_out = nn.Linear(N_h, N_h)
-        self.table_num_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 6))
 
         self.q_table_att = nn.Linear(self.encoded_num, N_h)
         self.q_col_att = nn.Linear(self.encoded_num, N_h)
@@ -78,20 +66,6 @@ class FindPredictor(nn.Module):
         SIZE_CHECK(table_tensors, [B, max_table_len, self.N_h])
         SIZE_CHECK(col_tensors, [B, max_col_len, self.N_h])
 
-        q_table_weighted_num_num = seq_conditional_weighted_num(self.q_table_num_att, q_enc, q_len, table_tensors,
-                                                            table_len).sum(1)
-        hs_table_weighted_num_num = seq_conditional_weighted_num(self.hs_table_num_att, hs_enc, hs_len, table_tensors,
-                                                             table_len).sum(1)
-        q_col_weighted_num_num = seq_conditional_weighted_num(self.q_col_num_att, q_enc, q_len, col_tensors, col_len).sum(1)
-        hs_col_weighted_num_num = seq_conditional_weighted_num(self.hs_col_num_att, hs_enc, hs_len, col_tensors, col_len).sum(1)
-
-        x = self.schema_num_out(F.relu(aggregated_schema))
-        x = x + self.q_table_num_out(q_table_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_table_num_out(hs_table_weighted_num_num)
-        x = x + self.q_col_num_out(q_col_weighted_num_num)
-        x = x + int(self.use_hs) * self.hs_col_num_out(hs_col_weighted_num_num)
-        table_num_score = self.table_num_out(x)
-
         q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len)
         SIZE_CHECK(q_table_weighted_num, [B, max_table_len, self.N_h])
         hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len)
@@ -112,16 +86,16 @@ class FindPredictor(nn.Module):
             if num < max_col_len:
                 col_score[idx, num:] = -100
 
-        return table_num_score, table_score, col_score
+        return table_score, col_score
 
     def loss(self, score, truth):
-        table_num_score, table_score, col_score = score
+        table_score, col_score = score
         num_truth = [len(one_truth) - 1 for one_truth in truth]
         data = torch.from_numpy(np.array(num_truth))
         if self.gpu:
             data = data.cuda()
-        truth_num_var = Variable(data)
-        loss = F.cross_entropy(table_num_score, truth_num_var)
+
+        loss = 0
 
         B = len(truth)
         SIZE_CHECK(table_score, [B, None])
@@ -147,28 +121,23 @@ class FindPredictor(nn.Module):
         return loss
 
     def check_acc(self, score, truth):
-        num_err, err, tot_err = 0, 0, 0
+        err = 0
         B = len(truth)
         pred = []
         if self.gpu:
-            table_num_score, table_score, col_score = [sc.data.cpu().numpy() for sc in score]
+            table_score, col_score = [F.tanh(sc).data.cpu().numpy() for sc in score]
         else:
-            table_num_score, table_score, col_score = [sc.data.numpy() for sc in score]
+             table_score, col_score = [F.tanh(sc).data.numpy() for sc in score]
 
         for b in range(B):
             cur_pred = {}
-            table_num = np.argmax(table_num_score[b]) + 1
-            cur_pred["table_num"] = table_num
-            cur_pred["table"] = np.argsort(-table_score[b])[:table_num]
-            cur_pred["numright_table"] = np.argsort(-table_score[b])[:len(truth[b])]
+            cur_pred["table"] = []
+            for i, val in enumerate(table_score[b]):
+                if val > 0.:
+                    cur_pred["table"].append(i)
             pred.append(cur_pred)
         for b, (p, t) in enumerate(zip(pred, truth)):
-            table_num, tab, rtab = p['table_num'], p['table'], p["numright_table"]
-            flag = True
-            if table_num != len(t): # double check truth format and for test cases
-                num_err += 1
-                flag = False
-            #to eval col predicts, if the gold sql has JOIN and foreign key col, then both fks are acceptable
+            tab = p['table']
             fk_list = []
             regular = []
             for l in t:
@@ -177,15 +146,10 @@ class FindPredictor(nn.Module):
                     fk_list.append(l)
                 else:
                     regular.append(l)
-            if set(rtab) != set(regular):
-                err += 1
-                flag = False
             if set(tab) != set(regular):
-                flag = False
-            if not flag:
-                tot_err += 1
+                err += 1
 
-        return np.array((num_err, err, tot_err))
+        return np.array(err)
 
     def score_to_tables(self, score):
         score = F.sigmoid(score)

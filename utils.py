@@ -190,7 +190,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         loss = model.loss(score, label)
 
-        num_err, p_err, err = model.check_acc(score, label)
+        err = model.check_acc(score, label)
         total_err += err
 
         # print("loss {}".format(loss.data.cpu().numpy()))
@@ -330,7 +330,7 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
                                   col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
         # print("label {}".format(label))
-        if component in ("agg","col","keyword","op", "from"):
+        if component in ("agg","col","keyword","op"):
             num_err, p_err, err = model.check_acc(score, label)
             total_number_error += num_err
             total_p_error += p_err
@@ -340,7 +340,7 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             total_error += err
         st = ed
 
-    if component in ("agg","col","keyword","op", "from"):
+    if component in ("agg","col","keyword","op"):
         print(("Dev {} acc number predict acc:{} partial acc: {} total acc: {}".format(component,1 - total_number_error*1.0/len(data),1 - total_p_error*1.0/len(data),  1 - total_error*1.0/len(data))))
         return 1 - total_error*1.0/len(data)
     else:

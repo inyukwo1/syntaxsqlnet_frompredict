@@ -114,9 +114,9 @@ class SchemaAggregator(nn.Module):
 
 
 class SchemaEncoder(nn.Module):
-    def __init__(self, hidden_dim, lower_dim):
+    def __init__(self, in_dim, hidden_dim, lower_dim):
         super(SchemaEncoder, self).__init__()
-        self.col_lstm = nn.LSTM(input_size=hidden_dim, hidden_size=hidden_dim//2,
+        self.col_lstm = nn.LSTM(input_size=in_dim, hidden_size=hidden_dim//2,
                 num_layers=1, batch_first=True,
                 dropout=0.3, bidirectional=True)
         self.lower = nn.Sequential(nn.Linear(hidden_dim, lower_dim), nn.ReLU())
