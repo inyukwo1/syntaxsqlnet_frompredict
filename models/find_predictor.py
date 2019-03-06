@@ -31,7 +31,7 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.schema_encoder = SchemaEncoder(N_h, 200)
+        self.schema_encoder = SchemaEncoder(N_h, N_h)
         self.schema_aggregator = SchemaAggregator(N_h)
 
         self.q_table_num_att = nn.Linear(self.encoded_num, N_h)
