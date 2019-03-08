@@ -6,7 +6,9 @@ import os
 import signal
 from preprocess_train_dev_data import get_table_dict
 import tqdm
+import random
 import pandas as pd
+import copy
 import os.path
 import pickle
 
@@ -63,6 +65,88 @@ def to_batch_tables(data, idxes, st,ed, table_type):
     return col_seq, tname_seqs, par_tnum_seqs, foreign_keys
 
 
+def prepare_tables(data, table_type):
+    prepared = {}
+    for datum in data:
+        ts = datum["ts"]
+        tname_toks = [x.split(" ") for x in ts[0]]
+        col_type = ts[2]
+        cols = [x.split(" ") for xid, x in ts[1]]
+        tab_seq = [xid for xid, x in ts[1]]
+        cols_add = []
+        for tid, col, ct in zip(tab_seq, cols, col_type):
+            col_one = [ct]
+            if tid == -1:
+                tabn = ["all"]
+            else:
+                if table_type == "no":
+                    tabn = []
+                elif table_type == "struct":
+                    tabn = []
+                else:
+                    tabn = tname_toks[tid]
+            for t in tabn:
+                if t not in col:
+                    col_one.append(t)
+            col_one.extend(col)
+            cols_add.append(col_one)
+        foreign_keys = ts[3]
+        for idx, _ in enumerate(foreign_keys):
+            foreign_keys[idx][0] = foreign_keys[idx][0] - 1
+            foreign_keys[idx][1] = foreign_keys[idx][1] - 1
+        for par_num in tab_seq[1:]:
+            assert par_num < len(tname_toks)
+        for f, p in foreign_keys:
+            assert f < len(cols_add[1:])
+            assert p < len(cols_add[1:])
+        prepared[ts[4]] = (cols_add[1:], tname_toks, tab_seq[1:], foreign_keys)
+    return prepared
+
+
+def augment_batch_tables(col_seq, tname_seqs, par_tnum_seqs, foreign_keys, prepared_tables):
+    ret_col_seq = []
+    ret_tname_seqs = []
+    ret_par_tnum_seqs = []
+    ret_foreign_keys = []
+    for one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys in zip(col_seq, tname_seqs, par_tnum_seqs, foreign_keys):
+        if len(one_tname_seqs) == 1 or random.randint(0, 100) < 50:
+            one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys = \
+                augment_table(one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys, prepared_tables)
+        ret_col_seq.append(one_col_seq)
+        ret_tname_seqs.append(one_tname_seqs)
+        ret_par_tnum_seqs.append(one_par_tnum_seqs)
+        ret_foreign_keys.append(one_foreign_keys)
+    return ret_col_seq, ret_tname_seqs, ret_par_tnum_seqs, ret_foreign_keys
+
+
+def augment_table(one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys, prepared_tables):
+    add_num = random.randint(3, 7)
+    choosed_tables = []
+    one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys = copy.deepcopy((one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys))
+    for _ in range(add_num):
+        choosed_table = random.choice(list(prepared_tables.keys()))
+        choosed_tables.append(choosed_table)
+        if prepared_tables[choosed_table][0] == one_col_seq:
+            continue
+        new_col_seq, new_tname_seqs, new_par_tnum_seqs, new_foreign_keys = prepared_tables[choosed_table]
+        ret_par_tnum_seqs = []
+        ret_foreign_keys = []
+        for f, p in new_foreign_keys:
+            ret_foreign_keys.append([f + len(one_col_seq), p + len(one_col_seq)])
+        for par_tnum in new_par_tnum_seqs:
+            ret_par_tnum_seqs.append(par_tnum + len(one_tname_seqs))
+        one_col_seq += new_col_seq
+        one_tname_seqs += new_tname_seqs
+        one_par_tnum_seqs += ret_par_tnum_seqs
+        one_foreign_keys += ret_foreign_keys
+    for par_num in one_par_tnum_seqs:
+        assert par_num < len(one_tname_seqs)
+    for f, p in one_foreign_keys:
+        assert f < len(one_col_seq)
+        assert p < len(one_col_seq)
+    return one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys
+
+
 def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
     # col_lens = []
     from_candidates = []
@@ -77,11 +161,13 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
     return from_candidates
 
 ## used for training in train.py
-def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert):
+def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, prepared_tables, table_type, use_tqdm, optimizer_bert):
     model.train()
     newdata = []
     for entry in data:
         if len(entry["ts"][0]) > 1:
+            newdata.append(entry)
+        elif random.randint(0, 6) == 0:
             newdata.append(entry)
     data = newdata
     perm=np.random.permutation(len(data))
@@ -91,7 +177,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
 
     for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
         ed = st+batch_size if st+batch_size < len(perm) else len(perm)
-        q_seq, history,label = to_batch_seq(data, perm, st, ed)
+        q_seq, history, label = to_batch_seq(data, perm, st, ed)
         q_emb_var, q_len = embed_layer.gen_x_q_batch(q_seq)
         hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
         score = 0.0
@@ -184,6 +270,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, t
 
         elif component == "from":
             col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
+            col_seq, tab_seq, par_tab_nums, foreign_keys = augment_batch_tables(col_seq, tab_seq, par_tab_nums, foreign_keys, prepared_tables)
             col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
                 col_seq, tab_seq)
             score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,

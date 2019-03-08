@@ -74,6 +74,7 @@ if __name__ == '__main__':
         exit(1)
     train_data = load_train_dev_dataset(args.train_component, "train", args.history_type, args.data_root)
     dev_data = load_train_dev_dataset(args.train_component, "dev", args.history_type, args.data_root)
+    prepared_tables = prepare_tables(train_data, args.table_type)
     # sql_data, table_data, val_sql_data, val_table_data, \
     #         test_sql_data, test_table_data, \
     #         TRAIN_DB, DEV_DB, TEST_DB = load_dataset(args.dataset, use_small=USE_SMALL)
@@ -127,8 +128,8 @@ if __name__ == '__main__':
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         print((' Loss = %s'% epoch_train(GPU,
-                model, optimizer, BATCH_SIZE,args.train_component,embed_layer,train_data, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
-        acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer,dev_data, table_type=args.table_type)
+                model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
+        acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer, dev_data, table_type=args.table_type)
         if acc > best_acc:
             best_acc = acc
             print("Save model...")

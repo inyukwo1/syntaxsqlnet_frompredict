@@ -40,8 +40,8 @@ class FindPredictor(nn.Module):
         self.hs_col_att = nn.Linear(N_h, N_h)
 
         self.schema_out = nn.Linear(N_h, N_h)
-        self.q_hs_table_out = nn.Sequential(nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
-        self.q_hs_col_out = nn.Sequential(nn.Linear(3 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
+        self.q_hs_table_out = nn.Sequential(nn.Linear(self.encoded_num + 2 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
+        self.q_hs_col_out = nn.Sequential(nn.Linear(self.encoded_num + 2 * N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h), nn.ReLU(), nn.Linear(N_h, N_h))
         if gpu:
             self.cuda()
 
@@ -67,9 +67,9 @@ class FindPredictor(nn.Module):
         SIZE_CHECK(col_tensors, [B, max_col_len, self.N_h])
 
         q_table_weighted_num = seq_conditional_weighted_num(self.q_table_att, q_enc, q_len, table_tensors, table_len)
-        SIZE_CHECK(q_table_weighted_num, [B, max_table_len, self.N_h])
+        SIZE_CHECK(q_table_weighted_num, [B, max_table_len, self.encoded_num])
         hs_table_weighted_num = seq_conditional_weighted_num(self.hs_table_att, hs_enc, hs_len, table_tensors, table_len)
-        SIZE_CHECK(q_table_weighted_num, [B, max_table_len, self.N_h])
+        SIZE_CHECK(hs_table_weighted_num, [B, max_table_len, self.N_h])
         q_col_weighted_num = seq_conditional_weighted_num(self.q_col_att, q_enc, q_len, col_tensors, col_len)
         hs_col_weighted_num = seq_conditional_weighted_num(self.hs_col_att, hs_enc, hs_len, col_tensors, col_len)
 

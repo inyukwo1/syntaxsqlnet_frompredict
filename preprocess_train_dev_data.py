@@ -6,7 +6,7 @@ import json
 import sys
 from collections import defaultdict
 
-train_dev = "dev"
+train_dev = "train"
 if len(sys.argv) > 1:
     train_dev = sys.argv[1]
 ###TODO: change dirs
@@ -260,7 +260,8 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
         table["table_names"],
         table["column_names"],
         table["column_types"],
-        table["foreign_keys"]
+        table["foreign_keys"],
+        table["db_id"]
     ]
     stack = [("root",sql)]
     with_join = False
