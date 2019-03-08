@@ -65,7 +65,7 @@ def encode_question(bert, inp, inp_len):
     if torch.cuda.is_available():
         mask = mask.cuda()
     encoded, _ = bert(input_ids=inp, attention_mask=mask)
-    return encoded[2]
+    return encoded[-1]
 
 
 def run_lstm(lstm, inp, inp_len, hidden=None):
