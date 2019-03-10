@@ -55,7 +55,7 @@ if __name__ == '__main__':
         BATCH_SIZE=20
     else:
         USE_SMALL=False
-        BATCH_SIZE=16
+        BATCH_SIZE=8
 
     if torch.cuda.is_available():
         GPU = True
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
     model = None
     if BERT:
-        bert_model = BertModel.from_pretrained('bert-base-uncased')
+        bert_model = BertModel.from_pretrained('bert-large-cased')
         if GPU:
             bert_model.cuda()
         def berter(q, q_len):

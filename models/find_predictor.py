@@ -20,7 +20,7 @@ class FindPredictor(nn.Module):
         self.use_bert = True if bert else False
         if bert:
             self.q_bert = bert
-            self.encoded_num = 768
+            self.encoded_num = 1024
         else:
             self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,

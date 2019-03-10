@@ -18,7 +18,7 @@ class WordEmbedding(nn.Module):
         self.gpu = gpu
         self.SQL_TOK = SQL_TOK
         self.use_bert = use_bert
-        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
 
         if trainable:
             print("Using trainable embedding")
