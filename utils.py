@@ -69,6 +69,8 @@ def prepare_tables(data, table_type):
     prepared = {}
     for datum in data:
         ts = datum["ts"]
+        if len(ts[0]) < 2:
+            continue
         tname_toks = [x.split(" ") for x in ts[0]]
         col_type = ts[2]
         cols = [x.split(" ") for xid, x in ts[1]]
