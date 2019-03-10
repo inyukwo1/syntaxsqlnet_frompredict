@@ -27,6 +27,7 @@ def to_batch_seq(data, idxes, st, ed):
         label.append(data[idxes[i]]["label"])
     return q_seq,history,label
 
+
 # CHANGED
 def to_batch_tables(data, idxes, st,ed, table_type):
     # col_lens = []
@@ -167,8 +168,6 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
     for entry in data:
         if len(entry["ts"][0]) > 1:
             newdata.append(entry)
-        elif random.randint(0, 6) == 0:
-            newdata.append(entry)
     data = newdata
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
@@ -269,12 +268,13 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
 
         elif component == "from":
-            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
-            col_seq, tab_seq, par_tab_nums, foreign_keys = augment_batch_tables(col_seq, tab_seq, par_tab_nums, foreign_keys, prepared_tables)
-            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
-                col_seq, tab_seq)
-            score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
-                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
+            tabs = []
+            cols = []
+            for i in range(st, ed):
+                tabs.append(data[perm[i]]['ts'][0])
+                cols.append(data[perm[i]]["ts"][1])
+            q_emb, q_len, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, table_locs)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -405,17 +405,13 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         elif component == "andor":
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
         elif component == "from":
-            real_label = []
-            for one_label in label:
-                tab_list = list(one_label.keys())
-                tab_list = [int(key) for key in tab_list]
-                real_label.append(tab_list)
-            label = real_label
-            col_seq, tab_seq, par_tab_nums, foreign_keys = to_batch_tables(data, perm, st, ed, table_type)
-            col_emb_var, col_name_len, col_len, table_emb_var, table_name_len, table_len = embed_layer.gen_col_batch(
-                col_seq, tab_seq)
-            score = model.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
-                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
+            tabs = []
+            cols = []
+            for i in range(st, ed):
+                tabs.append(data[perm[i]]['ts'][0])
+                cols.append(data[perm[i]]["ts"][1])
+            q_emb, q_len, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, table_locs)
         # print("label {}".format(label))
         if component in ("agg","col","keyword","op"):
             num_err, p_err, err = model.check_acc(score, label)

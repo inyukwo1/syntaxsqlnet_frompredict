@@ -18,7 +18,7 @@ class WordEmbedding(nn.Module):
         self.gpu = gpu
         self.SQL_TOK = SQL_TOK
         self.use_bert = use_bert
-        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
+        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
         if trainable:
             print("Using trainable embedding")
@@ -77,6 +77,34 @@ class WordEmbedding(nn.Module):
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
         return tokenized_q, q_len
+
+    def gen_bert_batch_with_table(self, q, tables, table_cols):
+        tokenized_q = []
+        q_len = np.zeros(len(q), dtype=np.int64)
+        table_locs = []
+        for idx, one_q in enumerate(q):
+            input_q = "[CLS] " + " ".join(one_q)
+            for table_num, table_name in enumerate(tables[idx]):
+                input_q += " [SEP] " + table_name
+                # for par_tab, col_name in table_cols[idx]:
+                #     if par_tab == table_num:
+                #         input_q += " col " + col_name
+            tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
+            indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
+            tokenized_q.append(indexed_one_q)
+            q_len[idx] = len(indexed_one_q)
+            table_loc = []
+            for loc, tok in enumerate(tokenozed_one_q):
+                if tok == "[SEP]":
+                    table_loc.append(loc)
+            table_locs.append(table_loc)
+        max_len = max(q_len)
+        for tokenized_one_q in tokenized_q:
+            tokenized_one_q += [0] * (max_len - len(tokenized_one_q))
+        tokenized_q = torch.LongTensor(tokenized_q)
+        if self.gpu:
+            tokenized_q = tokenized_q.cuda()
+        return tokenized_q, q_len, table_locs
 
     def gen_x_history_batch(self, history):
         B = len(history)
