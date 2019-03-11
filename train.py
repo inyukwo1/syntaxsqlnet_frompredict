@@ -49,7 +49,7 @@ if __name__ == '__main__':
 
     N_word=300
     B_word=42
-    N_h = 450
+    N_h = 300
     N_depth=2
     if args.toy:
         USE_SMALL=True
