@@ -93,17 +93,18 @@ class WordEmbedding(nn.Module):
             one_t_c_type_ids = []
             for table_num, table_name in enumerate(tables[idx]):
                 input_t_c = "[CLS] " + table_name
-                for par_tab, col_name in table_cols[idx]:
-                    if par_tab == table_num:
-                        input_t_c += " [SEP] " + col_name
+                # for par_tab, col_name in table_cols[idx]:
+                #     if par_tab == table_num:
+                #         input_t_c += " [SEP] " + col_name
                 tokenized_one_t_c = self.bert_tokenizer.tokenize(input_t_c)
-                table_token_len = -1
-                for tok_idx, token in enumerate(tokenized_one_t_c):
-                    if token == "[SEP]":
-                        table_token_len = tok_idx - 1
-                        break
-                assert table_token_len != -1
-                one_t_c_type_ids.append([0] * table_token_len)
+                # table_token_len = -1
+                # for tok_idx, token in enumerate(tokenized_one_t_c):
+                #     if token == "[SEP]":
+                #         table_token_len = tok_idx - 1
+                #         break
+                # assert table_token_len != -1
+                # one_t_c_type_ids.append([0] * table_token_len)
+                one_t_c_type_ids.append([0] * len(tokenized_one_t_c))
                 indexed_one_t_c = self.bert_tokenizer.convert_tokens_to_ids(tokenized_one_t_c)
                 input_t_c_list.append(indexed_one_t_c)
                 one_t_c_name_len.append(len(indexed_one_t_c))

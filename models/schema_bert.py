@@ -48,7 +48,7 @@ class SchemaBert(nn.Module):
 
         table_cols = table_cols.view(B * max_table_col_num_lens, max_table_col_name_lens)
         table_col_type_ids = table_col_type_ids.view(B * max_table_col_num_lens, max_table_col_name_lens)
-        table_cols_embedding = self.table_embedder(table_cols, table_col_type_ids)
+        table_cols_embedding = self.table_embedder(table_cols, None)
         encoded_table_cols = self.table_cols_encoder(table_cols_embedding, table_col_attention_mask)
         SIZE_CHECK(encoded_table_cols, [B * max_table_col_num_lens, max_table_col_name_lens, -1])
         encoded_table_cols = encoded_table_cols[:, 0, :].view(B, max_table_col_num_lens, -1)
