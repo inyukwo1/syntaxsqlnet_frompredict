@@ -18,6 +18,7 @@ from models.andor_predictor import AndOrPredictor
 from models.find_predictor import FindPredictor
 from models.schema_bert import SchemaBert
 from pytorch_pretrained_bert import BertModel
+from itertools import chain
 
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
 SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
@@ -114,7 +115,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
         optimizer_bert = torch.optim.Adam(bert.main_bert.parameters(), lr=bert_learning_rate)
-        optimizer_encoder = torch.optim.Adam(bert.table_cols_encoder.parameters(), lr=learning_rate)
+        optimizer_encoder = torch.optim.Adam(chain(bert.table_cols_encoder.parameters(), bert.table_embedder.parameters()), lr=learning_rate)
     else:
         optimizer_bert = None
     print("finished build model")

@@ -28,15 +28,15 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_trial7-18"
+save_dir="${data_root}/saved_models_trial7-19"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=3
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 7-18 newbert divide learning rate!"
+echo "trial 7-19 newbert divide learning rate, embedder!"
 
 module=from
 epoch=600

@@ -18,6 +18,7 @@ class SchemaBert(nn.Module):
     def __init__(self):
         super(SchemaBert, self).__init__()
         self.main_bert = BertModel.from_pretrained('bert-large-cased')
+        self.table_embedder = deepcopy(self.main_bert.embeddings)
         self.table_cols_encoder = deepcopy(self.main_bert.encoder.layer[0])
 
     def forward(self, input_ids, input_id_lens, table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id):
@@ -30,7 +31,7 @@ class SchemaBert(nn.Module):
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
         question_embedding = self.main_bert.embeddings(input_ids, torch.zeros_like(token_type_ids))
-        special_tok_embedding = self.main_bert.embeddings(special_tok_id, torch.ones_like(special_tok_id))
+        special_tok_embedding = self.table_embedder(special_tok_id, torch.ones_like(special_tok_id))
         special_tok_embedding = special_tok_embedding.view(-1)
         table_col_attention_mask = np.zeros((B, max_table_col_num_lens, max_table_col_name_lens), dtype=np.float32)
         for b in range(B):
@@ -47,7 +48,7 @@ class SchemaBert(nn.Module):
 
         table_cols = table_cols.view(B * max_table_col_num_lens, max_table_col_name_lens)
         table_col_type_ids = table_col_type_ids.view(B * max_table_col_num_lens, max_table_col_name_lens)
-        table_cols_embedding = self.main_bert.embeddings(table_cols, table_col_type_ids)
+        table_cols_embedding = self.table_embedder(table_cols, table_col_type_ids)
         encoded_table_cols = self.table_cols_encoder(table_cols_embedding, table_col_attention_mask)
         SIZE_CHECK(encoded_table_cols, [B * max_table_col_num_lens, max_table_col_name_lens, -1])
         encoded_table_cols = encoded_table_cols[:, 0, :].view(B, max_table_col_num_lens, -1)
