@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
 from pytorch_pretrained_bert import BertModel
-from models.schema_encoder import SchemaEncoder, SchemaAggregator
+from models.schema_bert import SchemaBert
 
 
 class FindPredictor(nn.Module):
@@ -35,7 +35,7 @@ class FindPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, hs_emb_var, hs_len, table_locs):
+    def forward(self, q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs):
 
         max_q_len = max(q_len)
         max_hs_len = max(hs_len)
@@ -46,9 +46,10 @@ class FindPredictor(nn.Module):
                 max_table_len = len(loc)
 
         if self.use_bert:
-            q_enc = self.q_bert(q_emb, q_len)
+            q_enc = self.q_bert(q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb, q_len)
+        _, max_q_len, _ = list(q_enc.size())
         assert list(q_enc.size()) == [B, max_q_len, self.encoded_num]
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:,0,:].unsqueeze(1).expand(B, max_q_len, self.N_h)

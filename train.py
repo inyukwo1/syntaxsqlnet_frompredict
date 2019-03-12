@@ -16,6 +16,7 @@ from models.op_predictor import OpPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
 from models.find_predictor import FindPredictor
+from models.schema_bert import SchemaBert
 from pytorch_pretrained_bert import BertModel
 
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
@@ -55,7 +56,7 @@ if __name__ == '__main__':
         BATCH_SIZE=20
     else:
         USE_SMALL=False
-        BATCH_SIZE=8
+        BATCH_SIZE=4
 
     if torch.cuda.is_available():
         GPU = True
@@ -85,14 +86,10 @@ if __name__ == '__main__':
     #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
     model = None
     if BERT:
-        bert_model = BertModel.from_pretrained('bert-large-cased')
+        bert = SchemaBert()
         if GPU:
-            bert_model.cuda()
-        def berter(q, q_len):
-            return encode_question(bert_model, q, q_len)
-        bert = berter
+            bert.cuda()
     else:
-        bert_model = None
         bert = None
     if args.train_component == "multi_sql":
         model = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
@@ -116,7 +113,7 @@ if __name__ == '__main__':
         model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
-        optimizer_bert = torch.optim.Adam(bert_model.parameters(), lr=bert_learning_rate)
+        optimizer_bert = torch.optim.Adam(bert.parameters(), lr=bert_learning_rate)
     else:
         optimizer_bert = None
     print("finished build model")

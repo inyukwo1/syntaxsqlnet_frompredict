@@ -80,31 +80,69 @@ class WordEmbedding(nn.Module):
 
     def gen_bert_batch_with_table(self, q, tables, table_cols):
         tokenized_q = []
+        tokenized_t_c = []
         q_len = np.zeros(len(q), dtype=np.int64)
+        t_c_num_len = []
+        t_c_name_len = []
         table_locs = []
+        t_c_type_ids = []
         for idx, one_q in enumerate(q):
             input_q = "[CLS] " + " ".join(one_q)
+            input_t_c_list = []
+            one_t_c_name_len = []
+            one_t_c_type_ids = []
             for table_num, table_name in enumerate(tables[idx]):
-                input_q += " [SEP] " + table_name
-                # for par_tab, col_name in table_cols[idx]:
-                #     if par_tab == table_num:
-                #         input_q += " col " + col_name
+                input_t_c = "[CLS] " + table_name
+                for par_tab, col_name in table_cols[idx]:
+                    if par_tab == table_num:
+                        input_t_c += " [SEP] " + col_name
+                tokenized_one_t_c = self.bert_tokenizer.tokenize(input_t_c)
+                table_token_len = -1
+                for tok_idx, token in enumerate(tokenized_one_t_c):
+                    if token == "[SEP]":
+                        table_token_len = tok_idx - 1
+                        break
+                assert table_token_len != -1
+                one_t_c_type_ids.append([0] * table_token_len)
+                indexed_one_t_c = self.bert_tokenizer.convert_tokens_to_ids(tokenized_one_t_c)
+                input_t_c_list.append(indexed_one_t_c)
+                one_t_c_name_len.append(len(indexed_one_t_c))
+            t_c_type_ids.append(one_t_c_type_ids)
+            t_c_name_len.append(one_t_c_name_len)
+            t_c_num_len.append(len(input_t_c_list))
+            tokenized_t_c.append(input_t_c_list)
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
             indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
             tokenized_q.append(indexed_one_q)
             q_len[idx] = len(indexed_one_q)
             table_loc = []
-            for loc, tok in enumerate(tokenozed_one_q):
-                if tok == "[SEP]":
-                    table_loc.append(loc)
+            for i in range(len(input_t_c_list)):
+                table_loc.append(len(tokenozed_one_q) + 2 * i)
             table_locs.append(table_loc)
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
             tokenized_one_q += [0] * (max_len - len(tokenized_one_q))
+        max_name_len = max(map(max, t_c_name_len))
+        max_num_len = max(t_c_num_len)
+        for tokenized_t_c_list in tokenized_t_c:
+            for one_tokenized_t_c in tokenized_t_c_list:
+                one_tokenized_t_c += [0] * (max_name_len - len(one_tokenized_t_c))
+            tokenized_t_c_list += [[0] * max_name_len] * (max_num_len - len(tokenized_t_c_list))
+        for one_t_c_type_ids in t_c_type_ids:
+            for type_ids in one_t_c_type_ids:
+                type_ids += [1] * (max_name_len - len(type_ids))
+            one_t_c_type_ids += [[0] * max_name_len] * (max_num_len - len(one_t_c_type_ids))
+        t_c_type_ids = torch.LongTensor(t_c_type_ids)
         tokenized_q = torch.LongTensor(tokenized_q)
+        tokenized_t_c = torch.LongTensor(tokenized_t_c)
+        special_tok_id = self.bert_tokenizer.convert_tokens_to_ids(["[SEP]"])
+        special_tok_id = torch.LongTensor(special_tok_id).view(1, 1, -1)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, table_locs
+            t_c_type_ids = t_c_type_ids.cuda()
+            tokenized_t_c = tokenized_t_c.cuda()
+            special_tok_id = special_tok_id.cuda()
+        return tokenized_q, q_len, tokenized_t_c, t_c_num_len, t_c_name_len, t_c_type_ids, special_tok_id, table_locs
 
     def gen_x_history_batch(self, history):
         B = len(history)
