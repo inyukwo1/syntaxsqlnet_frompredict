@@ -113,7 +113,8 @@ if __name__ == '__main__':
         model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
-        optimizer_bert = torch.optim.Adam(bert.parameters(), lr=bert_learning_rate)
+        optimizer_bert = torch.optim.Adam(bert.main_bert.parameters(), lr=bert_learning_rate)
+        optimizer_encoder = torch.optim.Adam(bert.table_cols_encoder.parameters(), lr=learning_rate)
     else:
         optimizer_bert = None
     print("finished build model")
@@ -125,7 +126,7 @@ if __name__ == '__main__':
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         print((' Loss = %s'% epoch_train(GPU,
-                model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
+                model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert, optimizer_encoder=optimizer_encoder)))
         acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer, dev_data, table_type=args.table_type)
         if acc > best_acc:
             best_acc = acc

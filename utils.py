@@ -162,7 +162,7 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
     return from_candidates
 
 ## used for training in train.py
-def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, prepared_tables, table_type, use_tqdm, optimizer_bert):
+def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, prepared_tables, table_type, use_tqdm, optimizer_bert, optimizer_encoder):
     model.train()
     newdata = []
     for entry in data:
@@ -288,10 +288,12 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
         optimizer.zero_grad()
         if optimizer_bert:
             optimizer_bert.zero_grad()
+            optimizer_encoder.zero_grad()
         loss.backward()
         optimizer.step()
         if optimizer_bert:
             optimizer_bert.step()
+            optimizer_encoder.step()
 
         st = ed
     print(("Train {} acc total acc: {}".format(component, 1 - total_err * 1.0 / len(data))), flush=True)
