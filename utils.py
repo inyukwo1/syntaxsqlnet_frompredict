@@ -122,7 +122,7 @@ def augment_batch_tables(col_seq, tname_seqs, par_tnum_seqs, foreign_keys, prepa
 
 
 def augment_table(one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys, prepared_tables):
-    add_num = random.randint(3, 7)
+    add_num = random.randint(1, 2)
     choosed_tables = []
     one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys = copy.deepcopy((one_col_seq, one_tname_seqs, one_par_tnum_seqs, one_foreign_keys))
     for _ in range(add_num):

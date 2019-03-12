@@ -34,7 +34,7 @@ mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=1
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
 echo "trial 7-15 augment-++!"
 
