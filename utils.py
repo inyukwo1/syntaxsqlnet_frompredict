@@ -134,11 +134,11 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
 ## used for training in train.py
 def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, table_type, use_tqdm, optimizer_bert, use_from):
     model.train()
-    newdata = []
-    for entry in data:
-        if len(entry["ts"][0]) > 1:
-            newdata.append(entry)
-    data = newdata
+    # newdata = []
+    # # for entry in data:
+    # #     if len(entry["ts"][0]) > 1:
+    # #         newdata.append(entry)
+    # data = newdata
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
     st = 0

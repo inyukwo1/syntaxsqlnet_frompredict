@@ -2,7 +2,7 @@
 
 # ## full + aug
  hs=full
- tbl=no
+ tbl=std
  d_type="_augment_from"
 
 # ## - aug
