@@ -5,6 +5,7 @@ import numpy as np
 import os
 import signal
 from preprocess_train_dev_data import get_table_dict
+from models.net_utils import encode_question
 import tqdm
 import random
 import pandas as pd
@@ -162,7 +163,7 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
     return from_candidates
 
 ## used for training in train.py
-def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, prepared_tables, table_type, use_tqdm, optimizer_bert, optimizer_encoder):
+def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, prepared_tables, table_type, use_tqdm, optimizer_bert, optimizer_encoder, bert):
     model.train()
     newdata = []
     for entry in data:
@@ -274,6 +275,8 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
             q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
+            compare_q, compare_q_len, compare_table_locs = embed_layer.gen_bert_batch_with_table_compare(q_seq, tabs, cols)
+            embedding = bert.embeddings(compare_q)
             score = model.forward(q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs)
         loss = model.loss(score, label)
 

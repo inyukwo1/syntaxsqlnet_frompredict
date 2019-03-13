@@ -50,14 +50,14 @@ if __name__ == '__main__':
 
     N_word=300
     B_word=42
-    N_h = 300
+    N_h = 200
     N_depth=2
     if args.toy:
         USE_SMALL=True
-        BATCH_SIZE=20
+        BATCH_SIZE=2
     else:
         USE_SMALL=False
-        BATCH_SIZE=4
+        BATCH_SIZE=8
 
     if torch.cuda.is_available():
         GPU = True
@@ -128,7 +128,7 @@ if __name__ == '__main__':
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         print((' Loss = %s'% epoch_train(GPU,
-                model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert, optimizer_encoder=optimizer_encoder)))
+                model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert, optimizer_encoder=optimizer_encoder, bert=bert.main_bert)))
         acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer, dev_data, table_type=args.table_type)
         if acc > best_acc:
             best_acc = acc
