@@ -64,6 +64,8 @@ class SchemaBert(nn.Module):
             position_embedding = self.main_bert.embeddings.position_embeddings(torch.arange(input_id_lens[b], input_id_lens[b] + len(one_padded_tensor), dtype=torch.long, device=embedding_device))
             zero_embedding = self.main_bert.embeddings.token_type_embeddings(torch.zeros(len(one_padded_tensor), dtype=torch.long, device=embedding_device))
             embedding = one_padded_tensor + position_embedding + zero_embedding
+            embedding = self.main_bert.embeddings.LayerNorm(embedding)
+            embedding = self.main_bert.embeddings.dropout(embedding)
             padded_encoded_table_cols.append(embedding)
         table_added_question_embedding = []
         for b in range(B):
