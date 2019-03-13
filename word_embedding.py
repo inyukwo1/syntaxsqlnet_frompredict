@@ -92,7 +92,7 @@ class WordEmbedding(nn.Module):
             one_t_c_name_len = []
             one_t_c_type_ids = []
             for table_num, table_name in enumerate(tables[idx]):
-                input_t_c = "[CLS] " + table_name
+                input_t_c = table_name
                 # for par_tab, col_name in table_cols[idx]:
                 #     if par_tab == table_num:
                 #         input_t_c += " [SEP] " + col_name
@@ -104,7 +104,7 @@ class WordEmbedding(nn.Module):
                 #         break
                 # assert table_token_len != -1
                 # one_t_c_type_ids.append([0] * table_token_len)
-                one_t_c_type_ids.append([0] * len(tokenized_one_t_c))
+                one_t_c_type_ids.append([1] * len(tokenized_one_t_c))
                 indexed_one_t_c = self.bert_tokenizer.convert_tokens_to_ids(tokenized_one_t_c)
                 input_t_c_list.append(indexed_one_t_c)
                 one_t_c_name_len.append(len(indexed_one_t_c))
@@ -117,8 +117,10 @@ class WordEmbedding(nn.Module):
             tokenized_q.append(indexed_one_q)
             q_len[idx] = len(indexed_one_q)
             table_loc = []
+            cur_len = len(tokenozed_one_q)
             for i in range(len(input_t_c_list)):
-                table_loc.append(len(tokenozed_one_q) + 2 * i)
+                table_loc.append(cur_len)
+                cur_len += 1 + len(input_t_c_list[i])
             table_locs.append(table_loc)
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:

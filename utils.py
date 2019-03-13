@@ -288,11 +288,13 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
         optimizer.zero_grad()
         if optimizer_bert:
             optimizer_bert.zero_grad()
+        if optimizer_encoder:
             optimizer_encoder.zero_grad()
         loss.backward()
         optimizer.step()
         if optimizer_bert:
             optimizer_bert.step()
+        if optimizer_encoder:
             optimizer_encoder.step()
 
         st = ed
