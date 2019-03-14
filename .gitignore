@@ -1,0 +1,8 @@
+.idea/
+__pycache__/
+*/__pycache__/
+venv
+data
+data_augment
+generated_datasets
+glove
