@@ -56,11 +56,11 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    random_seed_set(100)
+    random_seed_set(200)
 
     N_word=300
     B_word=42
-    N_h = 200
+    N_h = 300
     N_depth=2
     if args.toy:
         USE_SMALL=True
