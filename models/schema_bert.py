@@ -30,7 +30,19 @@ class SchemaBert(nn.Module):
         extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        question_embedding = self.main_bert.embeddings(input_ids)
+        seq_length = input_ids.size(1)
+        position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
+        position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(input_ids)
+
+        words_embeddings = self.main_bert.embeddings.word_embeddings(input_ids)
+        position_embeddings = self.main_bert.embeddings.position_embeddings(position_ids)
+        token_type_embeddings = self.main_bert.embeddings.token_type_embeddings(token_type_ids)
+
+        embeddings = words_embeddings + position_embeddings + token_type_embeddings
+        question_embedding = self.main_bert.embeddings.LayerNorm(embeddings)
+
         special_tok_embedding = self.main_bert.embeddings.word_embeddings(special_tok_id)
         special_tok_embedding = special_tok_embedding.view(-1)
         table_col_attention_mask = np.zeros((B, max_table_col_num_lens, max_table_col_name_lens), dtype=np.float32)
@@ -65,7 +77,7 @@ class SchemaBert(nn.Module):
             zero_embedding = self.main_bert.embeddings.token_type_embeddings(torch.zeros(len(one_padded_tensor), dtype=torch.long, device=embedding_device))
             embedding = one_padded_tensor + position_embedding + zero_embedding
             embedding = self.main_bert.embeddings.LayerNorm(embedding)
-            embedding = self.main_bert.embeddings.dropout(embedding)
+            #embedding = self.main_bert.embeddings.dropout(embedding)
             padded_encoded_table_cols.append(embedding)
         table_added_question_embedding = []
         for b in range(B):
@@ -84,6 +96,7 @@ class SchemaBert(nn.Module):
                 question_tensor = torch.cat((question_tensor, padding), dim=0)
                 table_added_question_embedding[b] = question_tensor
         table_added_question_embedding = torch.stack(table_added_question_embedding)
+        table_added_question_embedding =  self.main_bert.embeddings.dropout(table_added_question_embedding)
         encoded_layers = self.main_bert.encoder(table_added_question_embedding,
                                                 extended_attention_mask,
                                                 output_all_encoded_layers=True)

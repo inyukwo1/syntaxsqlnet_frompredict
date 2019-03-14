@@ -28,7 +28,7 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_trial7-25"
+save_dir="${data_root}/saved_models_trial7-24"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
@@ -36,7 +36,7 @@ mkdir -p ${log_dir}
 
 export CUDA_VISIBLE_DEVICES=7
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 7-25 increase hidden dim!"
+echo "trial 7-24 increase hidden dim!"
 
 module=from
 epoch=600
