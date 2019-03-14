@@ -20,6 +20,14 @@ from models.schema_bert import SchemaBert
 from pytorch_pretrained_bert import BertModel
 from itertools import chain
 
+
+def random_seed_set(seed):
+    torch.backends.cudnn.deterministic = True
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
 SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
 if __name__ == '__main__':
@@ -48,11 +56,7 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    torch.manual_seed(2809)
-    torch.backends.cudnn.deterministic = True
-    torch.cuda.manual_seed(2809)
-    np.random.seed(2809)
-    random.seed(2809)
+    random_seed_set(100)
 
     N_word=300
     B_word=42

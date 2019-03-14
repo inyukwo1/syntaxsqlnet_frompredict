@@ -21,16 +21,21 @@ class SchemaBert(nn.Module):
         self.table_embedder = deepcopy(self.main_bert.embeddings)
         self.table_cols_encoder = deepcopy(self.main_bert.encoder.layer[0])
 
+    def make_mask(self, mask_tensor):
+        mask_tensor = mask_tensor.unsqueeze(1).unsqueeze(2)
+        mask_tensor = mask_tensor.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        mask_tensor = (1.0 - mask_tensor) * -10000.0
+        if torch.cuda.is_available():
+            mask_tensor = mask_tensor.cuda()
+        return mask_tensor
+
     def forward(self, input_ids, input_id_lens, table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id):
         B = len(input_ids)
         _, max_table_col_num_lens, max_table_col_name_lens = list(table_cols.size())
         attention_mask = [[1.] * (input_id_lens[b] + 2 * table_col_num_lens[b]) for b in range(B)]
         attention_mask = make_padded_tensor(attention_mask)
-        token_type_ids = torch.zeros_like(input_ids)
-        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
-        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        question_embedding = self.main_bert.embeddings(input_ids, token_type_ids)
+        extended_attention_mask = self.make_mask(attention_mask)
+        question_embedding = self.main_bert.embeddings(input_ids)
 
         special_tok_embedding = self.table_embedder.word_embeddings(special_tok_id)
         special_tok_embedding = special_tok_embedding.view(-1)
@@ -40,12 +45,7 @@ class SchemaBert(nn.Module):
                 for j in range(table_col_name_lens[b][i]):
                     table_col_attention_mask[b, i, j] = 1.
         table_col_attention_mask = torch.from_numpy(table_col_attention_mask).view(B * max_table_col_num_lens, max_table_col_name_lens)
-        table_col_attention_mask = table_col_attention_mask.unsqueeze(1).unsqueeze(2)
-        table_col_attention_mask = table_col_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
-        table_col_attention_mask = (1.0 - table_col_attention_mask) * -10000.0
-        if torch.cuda.is_available():
-            table_col_attention_mask = table_col_attention_mask.cuda()
-            extended_attention_mask = extended_attention_mask.cuda()
+        table_col_attention_mask = self.make_mask(table_col_attention_mask)
 
         table_cols = table_cols.view(B * max_table_col_num_lens, max_table_col_name_lens)
         table_col_type_ids = table_col_type_ids.view(B * max_table_col_num_lens, max_table_col_name_lens)
