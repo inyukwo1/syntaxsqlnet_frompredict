@@ -70,6 +70,7 @@ class FindPredictor(nn.Module):
                 slice = torch.cat((slice, padding))
             newx.append(slice)
         newx = torch.stack(newx)
+
         if self.gpu:
             newx = newx.cuda()
         return newx

@@ -276,9 +276,6 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
             q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
-            compare_q, compare_q_len, compare_table_locs = embed_layer.gen_bert_batch_with_table_compare(q_seq, tabs, cols)
-            # embedding = bert.embeddings(compare_q)
-            #embedding = encode_question(bert, compare_q, compare_q_len)
             score = model.forward(q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs)
         loss = model.loss(score, label)
 

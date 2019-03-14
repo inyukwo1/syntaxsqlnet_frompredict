@@ -48,6 +48,12 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
+    torch.manual_seed(2809)
+    torch.backends.cudnn.deterministic = True
+    torch.cuda.manual_seed(2809)
+    np.random.seed(2809)
+    random.seed(2809)
+
     N_word=300
     B_word=42
     N_h = 200
@@ -90,6 +96,8 @@ if __name__ == '__main__':
         bert = SchemaBert()
         if GPU:
             bert.cuda()
+        def berter(*inputs):
+            return bert(*inputs)
     else:
         bert = None
     if args.train_component == "multi_sql":
@@ -111,7 +119,7 @@ if __name__ == '__main__':
     elif args.train_component == "andor":
         model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "from":
-        model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=berter)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
         optimizer_bert = torch.optim.Adam(bert.main_bert.parameters(), lr=bert_learning_rate)
@@ -125,11 +133,6 @@ if __name__ == '__main__':
     embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=BERT, trainable=args.train_emb)
     print("start training")
     best_acc = 0.0
-    torch.manual_seed(2809)
-    torch.backends.cudnn.deterministic = True
-    torch.cuda.manual_seed(2809)
-    np.random.seed(2809)
-    random.seed(2809)
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         print((' Loss = %s'% epoch_train(GPU,
