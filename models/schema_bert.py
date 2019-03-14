@@ -18,7 +18,6 @@ class SchemaBert(nn.Module):
     def __init__(self):
         super(SchemaBert, self).__init__()
         self.main_bert = BertModel.from_pretrained('bert-large-cased')
-        self.table_embedder = deepcopy(self.main_bert.embeddings)
         self.table_cols_encoder = deepcopy(self.main_bert.encoder.layer[0])
 
     def make_mask(self, mask_tensor):
@@ -37,7 +36,7 @@ class SchemaBert(nn.Module):
         extended_attention_mask = self.make_mask(attention_mask)
         question_embedding = self.main_bert.embeddings(input_ids)
 
-        special_tok_embedding = self.table_embedder.word_embeddings(special_tok_id)
+        special_tok_embedding = self.main_bert.embeddings.word_embeddings(special_tok_id)
         special_tok_embedding = special_tok_embedding.view(-1)
         table_col_attention_mask = np.zeros((B, max_table_col_num_lens, max_table_col_name_lens), dtype=np.float32)
         for b in range(B):
@@ -49,7 +48,7 @@ class SchemaBert(nn.Module):
 
         table_cols = table_cols.view(B * max_table_col_num_lens, max_table_col_name_lens)
         table_col_type_ids = table_col_type_ids.view(B * max_table_col_num_lens, max_table_col_name_lens)
-        table_cols_embedding = self.table_embedder(table_cols, table_col_type_ids)
+        table_cols_embedding = self.main_bert.embeddings(table_cols, table_col_type_ids)
         encoded_table_cols = self.table_cols_encoder(table_cols_embedding, table_col_attention_mask)
         SIZE_CHECK(encoded_table_cols, [B * max_table_col_num_lens, max_table_col_name_lens, -1])
         encoded_table_cols = encoded_table_cols[:, 0, :].view(B, max_table_col_num_lens, -1)
@@ -60,7 +59,13 @@ class SchemaBert(nn.Module):
                 word_embedding = torch.cat((special_tok_embedding.unsqueeze(0), encoded_table_cols[b, idx].unsqueeze(0)), dim=0)
                 one_padded_tensor.append(word_embedding)
             one_padded_tensor = torch.cat(one_padded_tensor, dim=0)
-            padded_encoded_table_cols.append(one_padded_tensor)
+            embedding_device = one_padded_tensor.device
+            position_embedding = self.main_bert.embeddings.position_embeddings(torch.arange(input_id_lens[b], input_id_lens[b] + len(one_padded_tensor), dtype=torch.long, device=embedding_device))
+            one_embedding = self.main_bert.embeddings.token_type_embeddings(torch.ones(len(one_padded_tensor), dtype=torch.long, device=embedding_device))
+            embedding = one_padded_tensor + position_embedding + one_embedding
+            embedding = self.main_bert.embeddings.LayerNorm(embedding)
+            embedding = self.main_bert.embeddings.dropout(embedding)
+            padded_encoded_table_cols.append(embedding)
         table_added_question_embedding = []
         for b in range(B):
             question_tensor = question_embedding[b, :input_id_lens[b]]
