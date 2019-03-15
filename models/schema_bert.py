@@ -19,6 +19,8 @@ class SchemaBert(nn.Module):
         super(SchemaBert, self).__init__()
         self.main_bert = BertModel.from_pretrained('bert-large-cased')
         self.table_cols_embeddings = deepcopy(self.main_bert.embeddings)
+        self.foreign_notifier = nn.Sequential(nn.Linear(1024, 1024), nn.Tanh())
+        self.primary_notifier = nn.Sequential(nn.Linear(1024, 1024), nn.Tanh())
         self.table_cols_encoder = deepcopy(self.main_bert.encoder.layer[0])
 
     def make_mask(self, mask_tensor):
@@ -29,7 +31,7 @@ class SchemaBert(nn.Module):
             mask_tensor = mask_tensor.cuda()
         return mask_tensor
 
-    def forward(self, input_ids, input_id_lens, table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id):
+    def forward(self, input_ids, input_id_lens, table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, parent_nums, foreign_keys):
         B = len(input_ids)
         _, max_table_col_num_lens, max_table_col_name_lens = list(table_cols.size())
         attention_mask = [[1.] * (input_id_lens[b] + table_col_num_lens[b]) for b in range(B)]
@@ -52,7 +54,24 @@ class SchemaBert(nn.Module):
         table_cols_embedding = self.main_bert.embeddings(table_cols, table_col_type_ids)
         encoded_table_cols = self.table_cols_encoder(table_cols_embedding, table_col_attention_mask)
         SIZE_CHECK(encoded_table_cols, [B * max_table_col_num_lens, max_table_col_name_lens, -1])
-        encoded_table_cols = encoded_table_cols[:, 0, :].view(B, max_table_col_num_lens, 1, -1)
+        encoded_table_cols = encoded_table_cols[:, 0, :].view(B, max_table_col_num_lens, -1)
+        temp_encoded_table_cols = []
+        for b in range(B):
+            temp_encoded_table_cols_one = []
+            for i in range(max_table_col_num_lens):
+                temp_encoded_table_cols_one.append(encoded_table_cols[b, i])
+            temp_encoded_table_cols.append(temp_encoded_table_cols_one)
+        for b in range(B):
+            for f, p in foreign_keys[b]:
+                f_parent = parent_nums[b][f]
+                p_parent = parent_nums[b][p]
+                temp_encoded_table_cols[b][f_parent] = temp_encoded_table_cols[b][f_parent] + self.primary_notifier(temp_encoded_table_cols[b][p_parent])
+                temp_encoded_table_cols[b][p_parent] = temp_encoded_table_cols[b][p_parent] + self.foreign_notifier(temp_encoded_table_cols[b][f_parent])
+        for b in range(B):
+            temp_encoded_table_cols[b] = torch.stack(temp_encoded_table_cols[b])
+        temp_encoded_table_cols = torch.stack(temp_encoded_table_cols)
+        encoded_table_cols = temp_encoded_table_cols.view(B, max_table_col_num_lens, 1, -1)
+
         padded_encoded_table_cols = []
         for b in range(B):
             one_padded_tensor = []

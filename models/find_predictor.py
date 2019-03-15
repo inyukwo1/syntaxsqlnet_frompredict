@@ -35,7 +35,7 @@ class FindPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs):
+    def forward(self, q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs, parent_tabs, foreign_keys):
 
         max_q_len = max(q_len)
         max_hs_len = max(hs_len)
@@ -46,7 +46,7 @@ class FindPredictor(nn.Module):
                 max_table_len = len(loc)
 
         if self.use_bert:
-            q_enc = self.q_bert(q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id)
+            q_enc = self.q_bert(q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, parent_tabs, foreign_keys)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb, q_len)
         _, max_q_len, _ = list(q_enc.size())

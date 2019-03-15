@@ -272,11 +272,18 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
         elif component == "from":
             tabs = []
             cols = []
+            parent_tabs = []
+            foreign_keys = []
             for i in range(st, ed):
+                one_parent_tab = []
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
+                for num, _ in data[perm[i]]["ts"][1]:
+                    one_parent_tab.append(num)
+                parent_tabs.append(one_parent_tab)
+                foreign_keys.append(data[perm[i]]["ts"][3])
             q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs, parent_tabs, foreign_keys)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -413,13 +420,18 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         elif component == "from":
             tabs = []
             cols = []
+            parent_tabs = []
+            foreign_keys = []
             for i in range(st, ed):
+                one_parent_tab = []
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
-            q_emb, q_len, table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs = embed_layer.gen_bert_batch_with_table(
-                q_seq, tabs, cols)
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, table_cols, table_col_num_lens, table_col_name_lens,
-                                  table_col_type_ids, special_tok_id, table_locs)
+                for num, _ in data[perm[i]]["ts"][1]:
+                    one_parent_tab.append(num)
+                parent_tabs.append(one_parent_tab)
+                foreign_keys.append(data[perm[i]]["ts"][3])
+            q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs, parent_tabs, foreign_keys)
         # print("label {}".format(label))
         if component in ("agg","col","keyword","op"):
             num_err, p_err, err = model.check_acc(score, label)

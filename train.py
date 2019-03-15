@@ -127,7 +127,8 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
     if BERT:
         optimizer_bert = torch.optim.Adam(bert.main_bert.parameters(), lr=bert_learning_rate)
-        optimizer_encoder = torch.optim.Adam(chain(bert.table_cols_encoder.parameters(), bert.table_cols_embeddings.parameters()), lr=learning_rate)
+        optimizer_encoder = torch.optim.Adam(chain(bert.table_cols_encoder.parameters(), bert.table_cols_embeddings.parameters(),
+                                                   bert.foreign_notifier.parameters(), bert.primary_notifier.parameters()), lr=learning_rate)
     else:
         optimizer_bert = None
     print("finished build model")
