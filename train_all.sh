@@ -34,9 +34,9 @@ mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=7
+export CUDA_VISIBLE_DEVICES=5
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 7-24 increase hidden dim!"
+echo "trial 7-24 naiive encoder!"
 
 module=from
 epoch=600
