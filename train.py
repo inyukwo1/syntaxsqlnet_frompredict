@@ -100,6 +100,7 @@ if __name__ == '__main__':
         bert = SchemaBert()
         if GPU:
             bert.cuda()
+
         def berter(*inputs):
             return bert(*inputs)
     else:
@@ -146,3 +147,6 @@ if __name__ == '__main__':
             best_acc = acc
             print("Save model...")
             torch.save(model.state_dict(), args.save_dir+"/{}_models.dump".format(args.train_component))
+            if BERT:
+                torch.save(bert.state_dict(), args.save_dir+"/bert_{}_models.dump".format(args.train_component))
+
