@@ -272,18 +272,25 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
         elif component == "from":
             tabs = []
             cols = []
+            foreign_keys = []
+            parent_tables = []
             for i in range(st, ed):
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
+                foreign_keys.append(data[perm[i]]["ts"][3])
+                par_tabs = []
+                for par_tab, _ in data[perm[i]]["ts"][1]:
+                    par_tabs.append(par_tab)
+                parent_tables.append(par_tabs)
             q_emb, q_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
-            compare_q, compare_q_len, compare_table_locs = embed_layer.gen_bert_batch_with_table_compare(q_seq, tabs, cols)
-            # embedding = bert.embeddings(compare_q)
-            #embedding = encode_question(bert, compare_q, compare_q_len)
             score = model.forward(q_emb, q_len, hs_emb_var, hs_len,  table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs)
         loss = model.loss(score, label)
-
-        err = model.check_acc(score, label)
-        total_err += err
+        if component == "from":
+            err, graph_err, herr = model.check_acc(score, label, foreign_keys, parent_tables)
+            total_err += err
+        else:
+            err = model.check_acc(score, label)
+            total_err += err
 
         # print("loss {}".format(loss.data.cpu().numpy()))
         if gpu:
@@ -314,6 +321,7 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
     st = 0
     total_number_error = 0.0
     total_p_error = 0.0
+    total_graph_error = 0.0
     total_error = 0.0
     print(("dev data size {}".format(len(data))))
     while st < len(data):
@@ -416,9 +424,16 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         elif component == "from":
             tabs = []
             cols = []
+            foreign_keys = []
+            parent_tables = []
             for i in range(st, ed):
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
+                foreign_keys.append(data[perm[i]]["ts"][3])
+                par_tabs = []
+                for par_tab, _ in data[perm[i]]["ts"][1]:
+                    par_tabs.append(par_tab)
+                parent_tables.append(par_tabs)
             q_emb, q_len, table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, table_locs = embed_layer.gen_bert_batch_with_table(
                 q_seq, tabs, cols)
             score = model.forward(q_emb, q_len, hs_emb_var, hs_len, table_cols, table_col_num_lens, table_col_name_lens,
@@ -429,6 +444,11 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
             total_number_error += num_err
             total_p_error += p_err
             total_error += err
+        elif component == "from":
+            err, graph_err, herr = model.check_acc(score, label, foreign_keys, parent_tables, True)
+            total_error += err
+            total_graph_error += graph_err
+            total_p_error += herr
         else:
             err = model.check_acc(score, label)
             total_error += err
@@ -436,6 +456,9 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
 
     if component in ("agg","col","keyword","op"):
         print(("Dev {} acc number predict acc:{} partial acc: {} total acc: {}".format(component,1 - total_number_error*1.0/len(data),1 - total_p_error*1.0/len(data),  1 - total_error*1.0/len(data))))
+        return 1 - total_error*1.0/len(data)
+    elif component == "from":
+        print(("Dev {} acc number predict acc:{} graph acc: {} huerictic acc: {}".format(component,1 - total_error*1.0/len(data),1 - total_graph_error*1.0/len(data), 1 - total_p_error*1.0/len(data))))
         return 1 - total_error*1.0/len(data)
     else:
         print(("Dev {} acc total acc: {}".format(component,1 - total_error*1.0/len(data))))

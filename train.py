@@ -128,11 +128,11 @@ if __name__ == '__main__':
     embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=BERT, trainable=args.train_emb)
     print("start training")
     best_acc = 0.0
-    torch.manual_seed(2809)
+    torch.manual_seed(1234)
     torch.backends.cudnn.deterministic = True
-    torch.cuda.manual_seed(2809)
-    np.random.seed(2809)
-    random.seed(2809)
+    torch.cuda.manual_seed_all(1234)
+    np.random.seed(1234)
+    random.seed(1234)
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         print((' Loss = %s'% epoch_train(GPU,
@@ -142,3 +142,6 @@ if __name__ == '__main__':
             best_acc = acc
             print("Save model...")
             torch.save(model.state_dict(), args.save_dir+"/{}_models.dump".format(args.train_component))
+            if BERT:
+                torch.save(bert.state_dict(), args.save_dir+"/bert_{}_models.dump".format(args.train_component))
+

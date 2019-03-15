@@ -9,6 +9,47 @@ from pytorch_pretrained_bert import BertModel
 from models.schema_bert import SchemaBert
 
 
+def graph_maker(tab_list, foreign_keys, parent_tables):
+    graph = {}
+    for tab in tab_list:
+        graph[tab] = []
+    for tab in tab_list:
+        if graph[tab]:
+            continue
+        for f, p in foreign_keys:
+            if parent_tables[f] == tab and parent_tables[p] in tab_list:
+                graph[tab] = [f]
+                graph[parent_tables[p]].append(p)
+            elif parent_tables[p] == tab and parent_tables[f] in tab_list:
+                graph[tab] = [p]
+                graph[parent_tables[f]].append(f)
+    while len(graph) > 1:
+        delete = False
+        for t in graph:
+            if not graph[t]:
+                delete = True
+                break
+        if not delete:
+            break
+        graph.pop(t)
+    return graph
+
+
+def graph_checker(graph1, graph2):
+    if len(graph1) != len(graph2):
+        return False
+    for t in graph1:
+        if str(t) not in graph2:
+            return False
+        t_list = graph1[t]
+        t_list.sort()
+        graph2_t_list = graph2[str(t)]
+        graph2_t_list.sort()
+        if t_list != graph2_t_list:
+            return False
+    return True
+
+
 class FindPredictor(nn.Module):
     def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert=None):
         super(FindPredictor, self).__init__()
@@ -95,8 +136,10 @@ class FindPredictor(nn.Module):
         loss += F.binary_cross_entropy_with_logits(score, label)
         return loss
 
-    def check_acc(self, score, truth):
+    def check_acc(self, score, truth, foreign_keys, parent_tables, log=False):
         err = 0
+        graph_err = 0
+        hueristic_err = 0
         B = len(truth)
         pred = []
         if self.gpu:
@@ -107,24 +150,40 @@ class FindPredictor(nn.Module):
         for b in range(B):
             cur_pred = {}
             cur_pred["table"] = []
+            cur_pred["itable"] = []
             for i, val in enumerate(score[b]):
                 if val > 0.:
                     cur_pred["table"].append(i)
+                    cur_pred["itable"].append(i)
+            if not cur_pred["itable"]:
+                cur_pred["itable"].append(np.argmax(score[b]))
             pred.append(cur_pred)
         for b, (p, t) in enumerate(zip(pred, truth)):
             tab = p['table']
-            fk_list = []
+            itab = p["itable"]
             regular = []
             for l in t:
                 l = int(l)
-                if isinstance(l, list):
-                    fk_list.append(l)
-                else:
-                    regular.append(l)
+                regular.append(l)
             if set(tab) != set(regular):
                 err += 1
+            igraph = graph_maker(itab, foreign_keys[b], parent_tables[b])
+            graph = graph_maker(tab, foreign_keys[b], parent_tables[b])
+            if log:
+                print(tab)
+                print("============")
+                print(graph)
+                print("=======")
+                print(igraph)
+                print("========")
+                print(t)
+                print("@@@@@@@@@@{}".format(graph_checker(igraph, t)), flush=True)
+            if not graph_checker(graph, t):
+                graph_err += 1
+            if not graph_checker(igraph, t):
+                hueristic_err += 1
 
-        return np.array(err)
+        return err, graph_err, hueristic_err
 
     def score_to_tables(self, score):
         score = F.sigmoid(score)
