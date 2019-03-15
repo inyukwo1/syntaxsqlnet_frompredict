@@ -6,7 +6,47 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
 from pytorch_pretrained_bert import BertModel
-from models.schema_encoder import SchemaEncoder, SchemaAggregator
+
+
+def graph_maker(tab_list, foreign_keys, parent_tables):
+    graph = {}
+    for tab in tab_list:
+        graph[tab] = []
+    for tab in tab_list:
+        if graph[tab]:
+            continue
+        for f, p in foreign_keys:
+            if parent_tables[f] == tab and parent_tables[p] in tab_list:
+                graph[tab] = [f]
+                graph[parent_tables[p]].append(p)
+            elif parent_tables[p] == tab and parent_tables[f] in tab_list:
+                graph[tab] = [p]
+                graph[parent_tables[f]].append(f)
+    while len(graph) > 1:
+        delete = False
+        for t in graph:
+            if not graph[t]:
+                delete = True
+                break
+        if not delete:
+            break
+        graph.pop(t)
+    return graph
+
+
+def graph_checker(graph1, graph2):
+    if len(graph1) != len(graph2):
+        return False
+    for t in graph1:
+        if str(t) not in graph2:
+            return False
+        t_list = graph1[t]
+        t_list.sort()
+        graph2_t_list = graph2[str(t)]
+        graph2_t_list.sort()
+        if t_list != graph2_t_list:
+            return False
+    return True
 
 
 class FindPredictor(nn.Module):
@@ -78,26 +118,35 @@ class FindPredictor(nn.Module):
                 err += 1
         return np.array(err)
 
-    def check_eval_acc(self, score, label):
+    def check_eval_acc(self, score, graph, foreign_keys, parent_tables):
         if self.gpu:
             score = F.tanh(score).data.cpu().numpy()
         else:
             score = F.tanh(score).data.numpy()
         correct = True
+        graph_correct = True
+        tabs = []
+
         for b in range(len(score)):
-            if score[b] > 0. and str(b) not in label:
+            if score[b] > 0.:
+                tabs.append(b)
+            if score[b] > 0. and str(b) not in graph:
                 correct = False
-            elif score[b] < 0. and str(b) in label:
+            elif score[b] < 0. and str(b) in graph:
                 correct = False
 
+        if not tabs:
+            tabs.append(np.argmax(score))
+        predict_graph = graph_maker(tabs, foreign_keys, parent_tables)
+        if not graph_checker(predict_graph, graph):
+            graph_correct = False
         print(score)
         print("=======")
-        print(label)
-        print("@@@@@@@@@@@@@@{}".format(correct))
-        if correct:
-            return 1.
-        else:
-            return 0.
+        print(predict_graph)
+        print("========")
+        print(graph)
+        print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
+        return correct, graph_correct
 
     def score_to_tables(self, score):
         score = F.sigmoid(score)

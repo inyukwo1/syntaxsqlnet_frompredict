@@ -28,7 +28,7 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-load_path="${data_root}/saved_models_trial7-6/from_models.dump"
+load_path="${data_root}/saved_models_trial41/"
 log_dir=${save_dir}/train_log
 
 
@@ -41,4 +41,5 @@ python test_one_module.py \
   --load_path     ${load_path} \
   --history_type ${hs} \
   --table_type   ${tbl} \
-  --train_component ${module}
+  --train_component ${module} \
+  --bert

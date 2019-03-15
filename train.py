@@ -55,7 +55,7 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    random_seed_set(2002)
+    random_seed_set(70)
 
     N_word=300
     B_word=42
@@ -148,3 +148,7 @@ if __name__ == '__main__':
             best_acc = acc
             print("Save model...")
             torch.save(model.state_dict(), args.save_dir+"/{}_models.dump".format(args.train_component))
+            if BERT:
+                print("Save bert")
+                torch.save(bert_model.state_dict(), args.save_dir+"/bert_{}_models.dump".format(args.train_component))
+

@@ -17,6 +17,7 @@ from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
 from models.find_predictor import FindPredictor
 from pytorch_pretrained_bert import BertModel
+from models.schema_bert import SchemaBert
 import time
 
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
@@ -41,7 +42,7 @@ if __name__ == '__main__':
 
     N_word=300
     B_word=42
-    N_h = 300
+    N_h = 200
     N_depth=2
     USE_SMALL=False
     BATCH_SIZE=48
@@ -72,11 +73,15 @@ if __name__ == '__main__':
     #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
     model = None
     if BERT:
-        bert_model = BertModel.from_pretrained('bert-base-uncased')
+        bert_model = BertModel.from_pretrained('bert-large-cased')
         if GPU:
             bert_model.cuda()
+
+
         def berter(q, q_len):
             return encode_question(bert_model, q, q_len)
+
+
         bert = berter
     else:
         bert_model = None
@@ -109,7 +114,13 @@ if __name__ == '__main__':
     print("finished build model")
 
     print_flag = False
-    model.load_state_dict(torch.load(args.load_path))
+    model.load_state_dict(torch.load(args.load_path + "/{}_models.dump".format(args.train_component)))
+    bert_model.load_state_dict(torch.load(args.load_path + "/bert_{}_models.dump".format(args.train_component)))
+    if BERT:
+        bert.load_state_dict(torch.load(args.load_path + "/bert_{}_models.dump".format(args.train_component)))
     embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=BERT, trainable=False)
-    acc = epoch_acc(model, BATCH_SIZE, args.train_component, embed_layer, dev_data, table_type=args.table_type)
+    if args.train_component == "from":
+        acc = from_acc(model, embed_layer, dev_data)
+    else:
+        acc = epoch_acc(model, BATCH_SIZE, args.train_component, embed_layer, dev_data, table_type=args.table_type)
     print("finished: {}".format(time.time() - start_time))

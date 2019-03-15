@@ -312,6 +312,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
 def from_acc(model, embed_layer, data):
     model.eval()
     total_err = 0.0
+    graph_err = 0.0
     print(("dev data size {}".format(len(data))))
     for datum in data:
         one_history = datum["history"]
@@ -324,10 +325,18 @@ def from_acc(model, embed_layer, data):
         one_cols = datum["ts"][1]
         q_emb, q_len = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols)
         score = model.forward(q_emb, q_len, hs_emb_var, hs_len)
-        err = model.check_eval_acc(score, one_label)
-        total_err += err
 
-    print(("Dev FROM acc total acc: {}".format(1 - total_err * 1.0 / len(data))), flush=True)
+        foreign_keys = datum["ts"][3]
+        parent_tables = []
+        for par_tab, _ in datum["ts"][1]:
+            parent_tables.append(par_tab)
+        correct, graph_correct = model.check_eval_acc(score, one_label, foreign_keys, parent_tables)
+        if not correct:
+            total_err += 1.
+        if not graph_correct:
+            graph_err += 1.
+
+    print(("Dev FROM acc total acc: {} graph acc: {}".format(1 - total_err * 1.0 / len(data), 1 - graph_err * 1.0 / len(data))), flush=True)
     return 1 - total_err * 1.0 / len(data)
 
 
