@@ -303,6 +303,7 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                 join_cols_list.append(cond[2][1][1])
                 join_cols_list.append(cond[3][1])
             join_table_dict = dict()
+            used_cols = []
             for table_num in table_list:
                 if type(table_num) is dict:
                     print("WRONG2") # nested query is in from clause
@@ -321,7 +322,8 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                 "question_tokens": question_tokens,
                 "ts": table_schema,
                 "history": history[:],
-                "label": join_table_dict
+                "label": join_table_dict,
+                "used_cols": used_cols
             })
             label_idxs = []
             for item in label[1]:
@@ -335,9 +337,9 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                 "label": label_idxs
             })
             if "having" in label[1]:
-                stack.append(("having",node[1], join_table_dict))
+                stack.append(("having",node[1], join_table_dict, used_cols))
             if "orderBy" in label[1]:
-                stack.append(("orderBy",node[1], join_table_dict))
+                stack.append(("orderBy",node[1], join_table_dict, used_cols))
             if "groupBy" in label[1]:
                 if "having" in label[1]:
                     dataset['having_dataset'].append({
@@ -355,11 +357,11 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                         "gt_col":node[1]["groupBy"][0][1],
                         "label": 0
                     })
-                stack.append(("groupBy",node[1], join_table_dict))
+                stack.append(("groupBy",node[1], join_table_dict, used_cols))
             if "where" in label[1]:
-                stack.append(("where",node[1], join_table_dict))
+                stack.append(("where",node[1], join_table_dict, used_cols))
             if "select" in label[1]:
-                stack.append(("select",node[1], join_table_dict))
+                stack.append(("select",node[1], join_table_dict, used_cols))
         elif node[0] in ("select","having","orderBy"):
             # if node[0] != "orderBy":
             history.append(node[0])
@@ -381,13 +383,15 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                 if l[0] == 0:
                     print("Warning: predicted 0 columns!")
                     continue
+                cols = get_label_cols(with_join,fk_dict,l[1])
                 dataset['col_dataset'].append({
                     "question_tokens": question_tokens,
                     "ts": table_schema,
                     "history": history[:],
                     "from": node[2],
-                    "label":get_label_cols(with_join,fk_dict,l[1])
+                    "label": cols
                 })
+                node[3].extend(cols)
                 for col, sql_item in zip(l[1], s):
                     key = "{}{}{}".format(col[0][0],col[0][1],col[0][2])
                     if key not in agg_col_dict:
@@ -482,13 +486,15 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                 if l[0] == 0:
                     print("Warning: predicted 0 columns!")
                     continue
+                cols = get_label_cols(with_join,fk_dict,l[1])
                 dataset['col_dataset'].append({
                     "question_tokens": question_tokens,
                     "ts": table_schema,
                     "history": history[:],
                     "from": node[2],
-                    "label": get_label_cols(with_join,fk_dict,l[1])
+                    "label": cols
                 })
+                node[3].extend(cols)
                 for col, sql_item in zip(l[1], s):
                     key = "{}{}{}".format(col[0][0], col[0][1], col[0][2])
                     if key not in op_col_dict:
@@ -505,6 +511,7 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                 if l[0] == 0:
                     print("Warning: predicted 0 columns!")
                     continue
+                cols = get_label_cols(with_join,fk_dict,l[1])
                 dataset['col_dataset'].append({
                     "question_tokens": question_tokens,
                     "ts": table_schema,
@@ -512,6 +519,7 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
                     "from": node[2],
                     "label": get_label_cols(with_join,fk_dict,l[1])
                 })
+                node[3].extend(cols)
                 for col, sql_item in zip(l[1], s):
                     key = "{}{}{}".format(col[0][0], col[0][1], col[0][2])
                     if key not in agg_col_dict:
