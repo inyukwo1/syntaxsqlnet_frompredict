@@ -63,7 +63,7 @@ class FindPredictor(nn.Module):
             slice = []
             for i in range(max_q_len):
                 if i in table_loc:
-                    slice.append(x[b, i] + x[b, i+1] + x[b, i+2])
+                    slice.append(x[b, i] + x[b, i+1] + x[b, i+2] + x[b, i+3] + x[b, i+4])
             slice = torch.stack(slice)
             if len(slice) < max_table_len:
                 padding = torch.from_numpy(np.full((max_table_len - len(slice), ), -100., dtype=np.float32))

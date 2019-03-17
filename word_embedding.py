@@ -117,7 +117,7 @@ class WordEmbedding(nn.Module):
             q_len[idx] = len(indexed_one_q)
             table_loc = []
             for i in range(len(input_t_c_list)):
-                table_loc.append(len(tokenozed_one_q) + 3 * i)
+                table_loc.append(len(tokenozed_one_q) + 5 * i)
             table_locs.append(table_loc)
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:

@@ -56,7 +56,7 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    random_seed_set(200)
+    random_seed_set(2000)
 
     N_word=300
     B_word=42
