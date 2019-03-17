@@ -28,15 +28,15 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_trial7-38"
+save_dir="${data_root}/saved_models_trial7-39"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 7-38 5-vector!"
+echo "trial 7-39 random seed changed!"
 
 module=from
 epoch=600
