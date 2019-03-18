@@ -83,16 +83,21 @@ class FindPredictor(nn.Module):
             score = F.tanh(score).data.cpu().numpy()
         else:
             score = F.tanh(score).data.numpy()
+        correct = True
+        for b in range(len(score)):
+            if score[b] > 0. and str(b) not in label:
+                correct = False
+            elif score[b] < 0. and str(b) in label:
+                correct = False
+
         print(score)
         print("=======")
         print(label)
-        print("@@@@@@@@@@@@@@")
-        for b in range(len(score)):
-            if score[b] > 0. and str(b) not in label:
-                return 1.
-            elif score[b] < 0. and str(b) in label:
-                return 1.
-        return 0.
+        print("@@@@@@@@@@@@@@{}".format(correct))
+        if correct:
+            return 1.
+        else:
+            return 0.
 
     def score_to_tables(self, score):
         score = F.sigmoid(score)

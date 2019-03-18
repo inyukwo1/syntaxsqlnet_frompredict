@@ -327,7 +327,7 @@ def from_acc(model, embed_layer, data):
         err = model.check_eval_acc(score, one_label)
         total_err += err
 
-    print(("Train FROM acc total acc: {}".format(1 - total_err * 1.0 / len(data))), flush=True)
+    print(("Dev FROM acc total acc: {}".format(1 - total_err * 1.0 / len(data))), flush=True)
     return 1 - total_err * 1.0 / len(data)
 
 

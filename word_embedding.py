@@ -108,11 +108,11 @@ class WordEmbedding(nn.Module):
         tokenized_q = []
         B = len(one_tables)
         q_len = np.zeros(B, dtype=np.int64)
-        for b in B:
+        for b in range(B):
             input_q = "[CLS] " + " ".join(one_q)
             table_name = one_tables[b]
             input_q += " [SEP] " + table_name
-            for par_tab, col_name in one_cols[b]:
+            for par_tab, col_name in one_cols:
                 if par_tab == b:
                     input_q += " [SEP] " + col_name
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)

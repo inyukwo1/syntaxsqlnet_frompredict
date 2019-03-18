@@ -34,9 +34,9 @@ mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=3
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 40 zero-one-select!"
+echo "trial 40 zero-one-select random seed!"
 
 module=from
 epoch=600
