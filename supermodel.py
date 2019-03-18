@@ -89,7 +89,7 @@ def to_batch_tables(tables, B, table_type):
 
 
 class SuperModel(nn.Module):
-    def __init__(self, word_emb, N_word, N_h=300, N_depth=2, gpu=True, trainable_emb=False, table_type="std", use_hs=True, bert=None):
+    def __init__(self, word_emb, N_word, N_h=300, N_depth=2, gpu=True, trainable_emb=False, table_type="std", use_hs=True, bert=None, with_from=False):
         super(SuperModel, self).__init__()
         self.gpu = gpu
         self.N_h = N_h
@@ -97,6 +97,7 @@ class SuperModel(nn.Module):
         self.trainable_emb = trainable_emb
         self.table_type = table_type
         self.use_hs = use_hs
+        self.with_from = with_from
         self.SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
         use_bert = False if bert is None else True
 
@@ -105,31 +106,31 @@ class SuperModel(nn.Module):
         self.embed_layer = WordEmbedding(word_emb, N_word, gpu, self.SQL_TOK, use_bert , trainable=trainable_emb)
 
         # initial all modules
-        self.multi_sql = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.multi_sql = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.multi_sql.eval()
 
-        self.key_word = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.key_word = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.key_word.eval()
 
-        self.col = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.col = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.col.eval()
 
-        self.op = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.op = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.op.eval()
 
-        self.agg = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.agg = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.agg.eval()
 
-        self.root_teminal = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.root_teminal = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.root_teminal.eval()
 
-        self.des_asc = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.des_asc = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.des_asc.eval()
 
-        self.having = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=bert)
+        self.having = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
         self.having.eval()
 
-        self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
+        self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=None)
         self.andor.eval()
 
         self.from_table = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
@@ -182,8 +183,11 @@ class SuperModel(nn.Module):
         timeout = time.time() + 2 # set timer to prevent infinite recursion in SQL generation
         failed = False
         while not stack.isEmpty():
-            if time.time() > timeout: failed=True; break
+            if time.time() > timeout:
+                failed=True
+                break
             vet = stack.pop()
+            print(vet, flush=True)
             # print(vet)
             hs_emb_var, hs_len = self.embed_layer.gen_x_history_batch(history)
             if len(idx_stack) > 0 and stack.size() < idx_stack[-1]:
@@ -234,9 +238,12 @@ class SuperModel(nn.Module):
                 stack.push(("root","original"))
                 # history[0].append("root")
             elif vet == "none":
-                from_score = self.from_table.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
-                                  col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
-                from_tables = self.from_table.score_to_tables(from_score)
+                if self.with_from:
+                    from_score = self.from_table.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
+                                      col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
+                    from_tables = self.from_table.score_to_tables(from_score)
+                else:
+                    from_tables = None
                 score = self.key_word.forward(q_emb_var,q_len,hs_emb_var,hs_len,kw_emb_var,kw_len)
                 kw_num_score, kw_score = [x.data.cpu().numpy() for x in score]
                 # print("kw_num_score:{}".format(kw_num_score))
@@ -247,6 +254,7 @@ class SuperModel(nn.Module):
                 # print("num_kw:{}".format(num_kw))
                 for kw in kw_score:
                     stack.push((KW_OPS[kw], from_tables))
+
                 stack.push(("select", from_tables))
             elif isinstance(vet,tuple) and vet[0] in ("select","orderBy","where","groupBy","having"):
                 kw = vet[0]

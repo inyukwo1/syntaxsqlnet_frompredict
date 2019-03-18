@@ -55,7 +55,7 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    random_seed_set(70)
+    random_seed_set(2001)
 
     N_word=300
     B_word=42
@@ -138,8 +138,10 @@ if __name__ == '__main__':
     best_acc = 0.0
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
+        bert_model.train()
         print((' Loss = %s'% epoch_train(GPU,
                 model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
+        bert_model.eval()
         if args.train_component == "from":
             acc = from_acc(model, embed_layer, dev_data)
         else:

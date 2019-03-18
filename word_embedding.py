@@ -38,8 +38,6 @@ class WordEmbedding(nn.Module):
         return self.word_emb.get(word, np.zeros(self.N_word, dtype=np.float32))
 
     def gen_x_q_batch(self, q):
-        if self.use_bert:
-            return self.gen_x_q_bert_batch(q)
         B = len(q)
         val_embs = []
         val_len = np.zeros(B, dtype=np.int64)

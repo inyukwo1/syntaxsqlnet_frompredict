@@ -481,7 +481,10 @@ def timeout_handler(num, stack):
 def test_acc(model, batch_size, data,output_path):
     table_dict = get_table_dict("./data/tables.json")
     f = open(output_path,"w")
-    for item in data[:]:
+    for idx, item in enumerate(data[:]):
+        if idx != 120:
+            continue
+        print("processing {}".format(idx), flush=True)
         db_id = item["db_id"]
         if db_id not in table_dict: print(("Error %s not in table_dict" % db_id))
         # signal.signal(signal.SIGALRM, timeout_handler)
