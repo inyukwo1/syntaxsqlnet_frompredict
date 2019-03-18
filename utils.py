@@ -11,6 +11,7 @@ import pandas as pd
 import copy
 import os.path
 import pickle
+import torch
 
 
 def load_train_dev_dataset(component,train_dev,history, root):
@@ -273,8 +274,17 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
             for i in range(st, ed):
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
-            q_emb, q_len, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, table_locs)
+            q_emb, q_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len)
+            new_label = []
+            for b, table in enumerate(selected_tables):
+                if str(table) not in label[b]:
+                    new_label.append(0.)
+                else:
+                    new_label.append(1.)
+            label = torch.tensor(new_label)
+            if torch.cuda.is_available():
+                label = label.cuda()
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -297,6 +307,29 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
     print(("Train {} acc total acc: {}".format(component, 1 - total_err * 1.0 / len(data))), flush=True)
 
     return cum_loss / len(data)
+
+
+def from_acc(model, embed_layer, data):
+    model.eval()
+    total_err = 0.0
+    print(("dev data size {}".format(len(data))))
+    for datum in data:
+        one_history = datum["history"]
+        one_label = datum["label"]
+        table_num = len(datum["ts"][0])
+        history = [one_history] * table_num
+        hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
+        one_q_seq = datum['question_tokens']
+        one_tab_names = datum["ts"][0]
+        one_cols = datum["ts"][1]
+        q_emb, q_len = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols)
+        score = model.forward(q_emb, q_len, hs_emb_var, hs_len)
+        err = model.check_eval_acc(score, one_label)
+        total_err += err
+
+    print(("Train FROM acc total acc: {}".format(1 - total_err * 1.0 / len(data))), flush=True)
+    return 1 - total_err * 1.0 / len(data)
+
 
 ## used for development evaluation in train.py
 def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_print=False, train_flag = False):

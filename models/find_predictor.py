@@ -31,19 +31,17 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.outer = nn.Linear(N_h + self.encoded_num, 1)
+        self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
+        self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, hs_emb_var, hs_len, table_locs):
+    def forward(self, q_emb, q_len, hs_emb_var, hs_len):
 
         max_q_len = max(q_len)
         max_hs_len = max(hs_len)
         B = len(q_len)
         max_table_len = 0
-        for loc in table_locs:
-            if max_table_len < len(loc):
-                max_table_len = len(loc)
 
         if self.use_bert:
             q_enc = self.q_bert(q_emb, q_len)
@@ -51,47 +49,15 @@ class FindPredictor(nn.Module):
             q_enc, _ = run_lstm(self.q_lstm, q_emb, q_len)
         assert list(q_enc.size()) == [B, max_q_len, self.encoded_num]
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        hs_enc = hs_enc[:,0,:].unsqueeze(1).expand(B, max_q_len, self.N_h)
-        q_enc = torch.cat((q_enc, hs_enc), dim=2)
-        x = self.outer(q_enc).squeeze(2)
-        SIZE_CHECK(x, [B, max_q_len])
-        if self.gpu:
-            x = x.cpu()
-        newx = []
-        for b, table_loc in enumerate(table_locs):
-            slice = []
-            for i in range(max_q_len):
-                if i in table_loc:
-                    slice.append(x[b, i])
-            slice = torch.stack(slice)
-            if len(slice) < max_table_len:
-                padding = torch.from_numpy(np.full((max_table_len - len(slice), ), -100., dtype=np.float32))
-                slice = torch.cat((slice, padding))
-            newx.append(slice)
-        newx = torch.stack(newx)
-        if self.gpu:
-            newx = newx.cuda()
-        return newx
+        hs_enc = hs_enc[:, 0, :]
+        q_enc = q_enc[:, 0, :]
+        q_enc = torch.cat((q_enc, hs_enc), dim=1)
+        x = self.outer1(q_enc)
+        x = self.outer2(x).squeeze()
+        return x
 
-    def loss(self, score, truth):
-        num_truth = [len(one_truth) - 1 for one_truth in truth]
-        data = torch.from_numpy(np.array(num_truth))
-        if self.gpu:
-            data = data.cuda()
-
-        loss = 0
-
-        B = len(truth)
-        SIZE_CHECK(score, [B, None])
-        max_table_len = list(score.size())[1]
-        label = []
-        for one_truth in truth:
-            label.append([1. if str(i) in one_truth else 0. for i in range(max_table_len)])
-        label = torch.from_numpy(np.array(label)).type(torch.FloatTensor)
-        if self.gpu:
-            label = label.cuda()
-        label = Variable(label)
-        loss += F.binary_cross_entropy_with_logits(score, label)
+    def loss(self, score, labels):
+        loss = F.binary_cross_entropy_with_logits(score, labels)
         return loss
 
     def check_acc(self, score, truth):
@@ -100,30 +66,33 @@ class FindPredictor(nn.Module):
         pred = []
         if self.gpu:
             score = F.tanh(score).data.cpu().numpy()
+            truth = truth.cpu().numpy()
         else:
             score = F.tanh(score).data.numpy()
+            truth = truth.numpy()
 
         for b in range(B):
-            cur_pred = {}
-            cur_pred["table"] = []
-            for i, val in enumerate(score[b]):
-                if val > 0.:
-                    cur_pred["table"].append(i)
-            pred.append(cur_pred)
-        for b, (p, t) in enumerate(zip(pred, truth)):
-            tab = p['table']
-            fk_list = []
-            regular = []
-            for l in t:
-                l = int(l)
-                if isinstance(l, list):
-                    fk_list.append(l)
-                else:
-                    regular.append(l)
-            if set(tab) != set(regular):
+            if score[b] > 0. and truth[b] < 0.5:
                 err += 1
-
+            elif score[b] <= 0. and truth[b] > 0.5:
+                err += 1
         return np.array(err)
+
+    def check_eval_acc(self, score, label):
+        if self.gpu:
+            score = F.tanh(score).data.cpu().numpy()
+        else:
+            score = F.tanh(score).data.numpy()
+        print(score)
+        print("=======")
+        print(label)
+        print("@@@@@@@@@@@@@@")
+        for b in range(len(score)):
+            if score[b] > 0. and str(b) not in label:
+                return 1.
+            elif score[b] < 0. and str(b) in label:
+                return 1.
+        return 0.
 
     def score_to_tables(self, score):
         score = F.sigmoid(score)

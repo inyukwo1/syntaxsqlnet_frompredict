@@ -129,7 +129,10 @@ if __name__ == '__main__':
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         print((' Loss = %s'% epoch_train(GPU,
                 model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
-        acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer, dev_data, table_type=args.table_type)
+        if args.train_component == "from":
+            acc = from_acc(model, embed_layer, dev_data)
+        else:
+            acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer, dev_data, table_type=args.table_type)
         if acc > best_acc:
             best_acc = acc
             print("Save model...")
