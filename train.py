@@ -56,7 +56,7 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    random_seed_set(2001)
+    random_seed_set(2002)
 
     N_word=300
     B_word=42
@@ -67,7 +67,7 @@ if __name__ == '__main__':
         BATCH_SIZE=2
     else:
         USE_SMALL=False
-        BATCH_SIZE=8
+        BATCH_SIZE=6
 
     if torch.cuda.is_available():
         GPU = True
