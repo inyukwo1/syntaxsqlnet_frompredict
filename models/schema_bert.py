@@ -34,7 +34,7 @@ class SchemaBert(nn.Module):
     def forward(self, input_ids, input_id_lens, table_cols, table_col_num_lens, table_col_name_lens, table_col_type_ids, special_tok_id, parent_nums, foreign_keys):
         B = len(input_ids)
         _, max_table_col_num_lens, max_table_col_name_lens = list(table_cols.size())
-        attention_mask = [[1.] * (input_id_lens[b] + 5 * table_col_num_lens[b]) for b in range(B)]
+        attention_mask = [[1.] * (input_id_lens[b] + 7 * table_col_num_lens[b]) for b in range(B)]
         attention_mask = make_padded_tensor(attention_mask)
         extended_attention_mask = self.make_mask(attention_mask)
         question_embedding = self.main_bert.embeddings(input_ids)
@@ -54,7 +54,7 @@ class SchemaBert(nn.Module):
         table_cols_embedding = self.main_bert.embeddings(table_cols, table_col_type_ids)
         encoded_table_cols = self.table_cols_encoder(table_cols_embedding, table_col_attention_mask)
         SIZE_CHECK(encoded_table_cols, [B * max_table_col_num_lens, max_table_col_name_lens, -1])
-        encoded_table_cols = encoded_table_cols[:, :5, :].view(B, max_table_col_num_lens, 5, -1)
+        encoded_table_cols = encoded_table_cols[:, :7, :].view(B, max_table_col_num_lens, 7, -1)
         temp_encoded_table_cols = []
         for b in range(B):
             temp_encoded_table_cols_one = []
@@ -70,7 +70,7 @@ class SchemaBert(nn.Module):
         for b in range(B):
             temp_encoded_table_cols[b] = torch.stack(temp_encoded_table_cols[b])
         temp_encoded_table_cols = torch.stack(temp_encoded_table_cols)
-        encoded_table_cols = temp_encoded_table_cols.view(B, max_table_col_num_lens, 5, -1)
+        encoded_table_cols = temp_encoded_table_cols.view(B, max_table_col_num_lens, 7, -1)
 
         padded_encoded_table_cols = []
         for b in range(B):
