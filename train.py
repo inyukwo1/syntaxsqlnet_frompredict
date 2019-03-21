@@ -17,7 +17,8 @@ from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
 from models.find_predictor import FindPredictor
 from pytorch_pretrained_bert import BertModel
-from itertools import chain
+from hyperparameters import H_PARAM
+from models.bert_container import BertContainer
 
 
 def random_seed_set(seed):
@@ -55,18 +56,18 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    random_seed_set(2001)
+    random_seed_set(H_PARAM["random_seed"])
 
-    N_word=300
-    B_word=42
-    N_h = 200
-    N_depth=2
+    N_word = H_PARAM["N_word"]
+    B_word = H_PARAM["B_word"]
+    N_h = H_PARAM["N_H"]
+    FROM_N_h = H_PARAM["FROM_N_H"]
+    N_depth = H_PARAM["N_DEPTH"]
     if args.toy:
         USE_SMALL=True
         BATCH_SIZE=20
     else:
         USE_SMALL=False
-        BATCH_SIZE=8
 
     if torch.cuda.is_available():
         GPU = True
@@ -76,60 +77,44 @@ if __name__ == '__main__':
         BERT = True
     else:
         BERT = False
-    # TRAIN_ENTRY=(False, True, False)  # (AGG, SEL, COND)
-    # TRAIN_AGG, TRAIN_SEL, TRAIN_COND = TRAIN_ENTRY
-    learning_rate = 1e-4
-    bert_learning_rate = 1e-5
+    learning_rate = H_PARAM["learning_rate"]
+    bert_learning_rate = H_PARAM["bert_learning_rate"]
     if args.train_component not in TRAIN_COMPONENTS:
         print("Invalid train component")
         exit(1)
     train_data = load_train_dev_dataset(args.train_component, "train", args.history_type, args.data_root)
     dev_data = load_train_dev_dataset(args.train_component, "dev", args.history_type, args.data_root)
     prepared_tables = prepare_tables(train_data, args.table_type)
-    # sql_data, table_data, val_sql_data, val_table_data, \
-    #         test_sql_data, test_table_data, \
-    #         TRAIN_DB, DEV_DB, TEST_DB = load_dataset(args.dataset, use_small=USE_SMALL)
 
-    word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), \
-            load_used=args.train_emb, use_small=USE_SMALL)
+    word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), load_used=args.train_emb, use_small=USE_SMALL)
     print("finished load word embedding")
-    #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
     model = None
     if BERT:
-        bert_model = BertModel.from_pretrained('bert-large-cased')
-        if GPU:
-            bert_model.cuda()
-        def berter(q, q_len):
-            return encode_question(bert_model, q, q_len)
-        bert = berter
+        bert_model = BertContainer()
     else:
         bert_model = None
-        bert = None
     if args.train_component == "multi_sql":
-        model = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "keyword":
-        model = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "col":
-        model = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "op":
-        model = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "agg":
-        model = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "root_tem":
-        model = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "des_asc":
-        model = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "having":
-        model = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "andor":
-        model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "from":
-        model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = FindPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert_model.bert)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
-    if BERT:
-        optimizer_bert = torch.optim.Adam(bert_model.parameters(), lr=bert_learning_rate)
-    else:
-        optimizer_bert = None
+
     print("finished build model")
 
     print_flag = False
@@ -140,12 +125,12 @@ if __name__ == '__main__':
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         bert_model.train()
         print((' Loss = %s'% epoch_train(GPU,
-                model, optimizer, BATCH_SIZE, args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, optimizer_bert=optimizer_bert)))
+               model, optimizer, H_PARAM["batch_size"], args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, bert_model=bert_model)))
         bert_model.eval()
         if args.train_component == "from":
-            acc = from_acc(model, embed_layer, dev_data)
+            acc = from_acc(model, embed_layer, dev_data, H_PARAM["batch_size"])
         else:
-            acc = epoch_acc(model, BATCH_SIZE, args.train_component,embed_layer, dev_data, table_type=args.table_type)
+            acc = epoch_acc(model, 1, args.train_component,embed_layer, dev_data, table_type=args.table_type)
         if acc > best_acc:
             best_acc = acc
             print("Save model...")

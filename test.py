@@ -29,10 +29,6 @@ if __name__ == '__main__':
     N_word=300
     B_word=42
     N_depth=2
-    # if args.part:
-    #     part = True
-    # else:
-    #     part = False
     if args.toy:
         USE_SMALL=True
         GPU=True
@@ -43,18 +39,10 @@ if __name__ == '__main__':
         BATCH_SIZE=2 #64
     if not torch.cuda.is_available():
         GPU=False
-    # TRAIN_ENTRY=(False, True, False)  # (AGG, SEL, COND)
-    # TRAIN_AGG, TRAIN_SEL, TRAIN_COND = TRAIN_ENTRY
-    learning_rate = 1e-4
-
-    #TODO
     data = json.load(open(args.test_data_path))
-    # dev_data = load_train_dev_dataset(args.train_component, "dev", args.history)
 
     word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), \
             load_used=args.train_emb, use_small=USE_SMALL)
-    # dev_data = load_train_dev_dataset(args.train_component, "dev", args.history)
-    #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
 
     bert_model = BertModel.from_pretrained('bert-large-cased')
     if GPU:

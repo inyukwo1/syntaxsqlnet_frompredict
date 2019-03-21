@@ -17,7 +17,7 @@ from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
 from models.find_predictor import FindPredictor
 from pytorch_pretrained_bert import BertModel
-from models.schema_bert import SchemaBert
+from hyperparameters import H_PARAM
 import time
 
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
@@ -40,12 +40,13 @@ if __name__ == '__main__':
         args.history_type = "full"
         use_hs = False
 
-    N_word=300
-    B_word=42
-    N_h = 200
-    N_depth=2
+    N_word = H_PARAM["N_word"]
+    B_word = H_PARAM["B_word"]
+    N_h = H_PARAM["N_H"]
+    FROM_N_h = H_PARAM["FROM_N_H"]
+    N_depth = H_PARAM["N_DEPTH"]
     USE_SMALL=False
-    BATCH_SIZE=48
+    BATCH_SIZE=1
 
     if torch.cuda.is_available():
         GPU = True
@@ -55,22 +56,14 @@ if __name__ == '__main__':
         BERT = True
     else:
         BERT = False
-    # TRAIN_ENTRY=(False, True, False)  # (AGG, SEL, COND)
-    # TRAIN_AGG, TRAIN_SEL, TRAIN_COND = TRAIN_ENTRY
-    learning_rate = 1e-4
-    bert_learning_rate = 1e-5
     if args.train_component not in TRAIN_COMPONENTS:
         print("Invalid train component")
         exit(1)
     dev_data = load_train_dev_dataset(args.train_component, "dev", args.history_type, args.data_root)
-    # sql_data, table_data, val_sql_data, val_table_data, \
-    #         test_sql_data, test_table_data, \
-    #         TRAIN_DB, DEV_DB, TEST_DB = load_dataset(args.dataset, use_small=USE_SMALL)
 
     start_time = time.time()
     word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), load_used=False, use_small=USE_SMALL)
     print("finished load word embedding: {}".format(time.time() - start_time))
-    #word_emb = load_concat_wemb('glove/glove.42B.300d.txt', "/data/projects/paraphrase/generation/para-nmt-50m/data/paragram_sl999_czeng.txt")
     model = None
     if BERT:
         bert_model = BertModel.from_pretrained('bert-large-cased')
@@ -105,12 +98,7 @@ if __name__ == '__main__':
     elif args.train_component == "andor":
         model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "from":
-        model = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
-    if BERT:
-        optimizer_bert = torch.optim.Adam(bert_model.parameters(), lr=bert_learning_rate)
-    else:
-        optimizer_bert = None
+        model = FindPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     print("finished build model")
 
     print_flag = False

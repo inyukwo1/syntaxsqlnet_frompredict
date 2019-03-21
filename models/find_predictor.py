@@ -4,8 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZE_CHECK, seq_conditional_weighted_num
-from pytorch_pretrained_bert import BertModel
+from models.net_utils import run_lstm, SIZE_CHECK
 
 
 def sql_graph_maker(tab_list, foreign_keys, parent_tables):
@@ -133,25 +132,31 @@ class FindPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, hs_emb_var, hs_len):
-
-        max_q_len = max(q_len)
-        max_hs_len = max(hs_len)
+    def forward(self, q_emb, q_len, table_locs, table_sep_locs, hs_emb_var, hs_len):
         B = len(q_len)
-        max_table_len = 0
 
         if self.use_bert:
-            q_enc = self.q_bert(q_emb, q_len)
+            q_enc = self.q_bert(q_emb, q_len, table_locs, table_sep_locs)
         else:
             q_enc, _ = run_lstm(self.q_lstm, q_emb, q_len)
-        assert list(q_enc.size()) == [B, max_q_len, self.encoded_num]
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
-        q_enc = q_enc[:, 0, :]
-        q_enc = torch.cat((q_enc, hs_enc), dim=1)
-        x = self.outer1(q_enc)
-        x = self.outer2(x).squeeze()
-        return x
+        batch_reses = []
+        for b in range(len(q_enc)):
+            sep_tensors = []
+            for sep_loc in table_sep_locs[b]:
+                x = torch.cat((q_enc[b, sep_loc], hs_enc[b]))
+                sep_tensors.append(x)
+            sep_tensors = torch.stack(sep_tensors)
+            res = self.outer2(self.outer1(sep_tensors)).squeeze(1)
+            if len(res) < 3:
+                padding = torch.ones(3 - len(res)) * -100
+                if torch.cuda.is_available():
+                    padding = padding.cuda()
+                res = torch.cat((res, padding))
+            batch_reses.append(res)
+        batch_reses = torch.stack(batch_reses)
+        return batch_reses
 
     def loss(self, score, labels):
         loss = F.binary_cross_entropy_with_logits(score, labels)
@@ -169,32 +174,39 @@ class FindPredictor(nn.Module):
             truth = truth.numpy()
 
         for b in range(B):
-            if score[b] > 0. and truth[b] < 0.5:
-                err += 1
-            elif score[b] <= 0. and truth[b] > 0.5:
-                err += 1
+            for idx in range(3):
+                if score[b][idx] > 0. and truth[b][idx] < 0.5:
+                    err += 1
+                elif score[b][idx] <= 0. and truth[b][idx] > 0.5:
+                    err += 1
         return np.array(err)
 
-    def check_eval_acc(self, score, graph, foreign_keys, parent_tables, table_names, column_names, question):
+    def check_eval_acc(self, score, selected_tagbles, graph, foreign_keys, parent_tables, table_names, column_names, question):
+        table_num_ed = len(table_names)
+        total_nums = [0] * table_num_ed
+        choose_score = [0] * table_num_ed
         if self.gpu:
             score = F.tanh(score).data.cpu().numpy()
         else:
             score = F.tanh(score).data.numpy()
-        correct = True
+        correct = False
         graph_correct = True
-        tabs = []
 
         for b in range(len(score)):
-            if score[b] > 0.:
-                tabs.append(b)
-            if score[b] > 0. and str(b) not in graph:
-                correct = False
-            elif score[b] < 0. and str(b) in graph:
-                correct = False
-
+            for idx, tab in enumerate(selected_tagbles[b]):
+                total_nums[tab] += 1
+                if score[b, idx] > 0.:
+                    choose_score[tab] += 1
+        tabs = []
+        vote_scores = []
+        for i in range(table_num_ed):
+            vote_score = choose_score[i] / total_nums[i]
+            vote_scores.append(vote_score)
+            if vote_score > 0.5:
+                tabs.append(i)
         if not tabs:
-            tabs.append(np.argmax(score))
-        sorted_score_arg = np.argsort(score)
+            tabs.append(np.argmax(vote_scores))
+        sorted_score_arg = np.argsort(vote_scores)
         new_tabs = []
         for tab in sorted_score_arg:
             if tab in tabs:
@@ -211,7 +223,7 @@ class FindPredictor(nn.Module):
                     if par_tab == idx:
                         print("   {}: {}".format(col_idx, col_name))
 
-            print(score)
+            print(vote_score)
             print("=======")
             print(predict_graph)
             print("========")

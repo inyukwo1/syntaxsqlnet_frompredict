@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 from pytorch_pretrained_bert import BertTokenizer
+from graph_utils import generate_random_three_hop_path, generate_three_hop_path_from_seed
 import random
 
 
@@ -77,54 +78,116 @@ class WordEmbedding(nn.Module):
             tokenized_q = tokenized_q.cuda()
         return tokenized_q, q_len
 
-    def gen_bert_batch_with_table(self, q, tables, table_cols):
+    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys):
         tokenized_q = []
         q_len = np.zeros(len(q), dtype=np.int64)
         selected_tables = []
+        table_locs = []
+        table_sep_locs = []
         for idx, one_q in enumerate(q):
             input_q = "[CLS] " + " ".join(one_q)
-            table_num = random.choice(range(len(tables[idx])))
-            selected_tables.append(table_num)
-            table_name = tables[idx][table_num]
-            input_q += " [SEP] " + table_name
-            for par_tab, col_name in table_cols[idx]:
-                if par_tab == table_num:
-                    input_q += " [SEP] " + col_name
+            parent_tables = []
+            for t, c in table_cols[idx]:
+                parent_tables.append(t)
+            generated_tables = generate_random_three_hop_path(len(tables[idx]), parent_tables, foreign_keys[idx])
+
+            selected_tables.append(generated_tables)
+            table_sep_nums = []
+            current_sep_num = 0
+            for table_num in generated_tables:
+                table_name = tables[idx][table_num]
+                input_q += " [SEP] " + table_name
+                table_sep_nums.append(current_sep_num)
+                current_sep_num += 1
+                for par_tab, col_name in table_cols[idx]:
+                    if par_tab == table_num:
+                        input_q += " [SEP] " + col_name
+                        current_sep_num += 1
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
             indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
             tokenized_q.append(indexed_one_q)
             q_len[idx] = len(indexed_one_q)
+            one_table_locs = []
+            one_table_sep_locs = []
+            token_sep_found = 0
+            table_seeing = False
+            for token_idx, token in enumerate(tokenozed_one_q):
+                if token == "[SEP]":
+                    if token_sep_found in table_sep_nums:
+                        one_table_sep_locs.append(token_idx)
+                        table_seeing = True
+                    else:
+                        table_seeing = False
+                    token_sep_found += 1
+                else:
+                    if table_seeing:
+                        one_table_locs.append(token_idx)
+            table_locs.append(one_table_locs)
+            table_sep_locs.append(one_table_sep_locs)
+
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
             tokenized_one_q += [0] * (max_len - len(tokenized_one_q))
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, selected_tables
+        return tokenized_q, q_len, table_locs, table_sep_locs, selected_tables
 
-    def gen_bert_for_eval(self, one_q, one_tables, one_cols):
+    def gen_bert_for_eval(self, one_q, one_tables, one_cols, foreign_keys):
         tokenized_q = []
-        B = len(one_tables)
+        parent_nums = []
+        table_locs = []
+        table_sep_locs = []
+        for par_tab, _ in one_cols:
+            parent_nums.append(par_tab)
+        table_lists = []
+        for tab in range(len(one_tables)):
+            table_lists += list(generate_three_hop_path_from_seed(tab, parent_nums, foreign_keys))
+
+        B = len(table_lists)
         q_len = np.zeros(B, dtype=np.int64)
         for b in range(B):
             input_q = "[CLS] " + " ".join(one_q)
-            table_name = one_tables[b]
-            input_q += " [SEP] " + table_name
-            for par_tab, col_name in one_cols:
-                if par_tab == b:
-                    input_q += " [SEP] " + col_name
+
+            table_sep_nums = []
+            current_sep_num = 0
+            for tab in table_lists[b]:
+                table_name = one_tables[tab]
+                input_q += " [SEP] " + table_name
+                table_sep_nums.append(current_sep_num)
+                current_sep_num += 1
+                for par_tab, col_name in one_cols:
+                    if par_tab == tab:
+                        input_q += " [SEP] " + col_name
+                        current_sep_num += 1
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
             indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
             tokenized_q.append(indexed_one_q)
             q_len[b] = len(indexed_one_q)
+            one_table_locs = []
+            one_table_sep_locs = []
+            token_sep_found = 0
+            table_seeing = False
+            for token_idx, token in enumerate(tokenozed_one_q):
+                if token == "[SEP]":
+                    if token_sep_found in table_sep_nums:
+                        one_table_sep_locs.append(token_idx)
+                        table_seeing = True
+                    else:
+                        table_seeing = False
+                    token_sep_found += 1
+                else:
+                    if table_seeing:
+                        one_table_locs.append(token_idx)
+            table_locs.append(one_table_locs)
+            table_sep_locs.append(one_table_sep_locs)
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
             tokenized_one_q += [0] * (max_len - len(tokenized_one_q))
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len
-
+        return tokenized_q, q_len, table_locs, table_sep_locs, table_lists
 
     def gen_x_history_batch(self, history):
         B = len(history)

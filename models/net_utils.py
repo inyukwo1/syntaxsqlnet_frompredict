@@ -1,14 +1,18 @@
+from __future__ import print_function
 import torch
 import torch.nn as nn
 import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
+import sys
 
 
 def SIZE_CHECK(tensor, size):
     for idx, dim in enumerate(size):
         if dim is None:
             size[idx] = list(tensor.size())[idx]
+    if list(tensor.size()) != size:
+        print("tensor size: {}, expected {}".format(list(tensor.size()), size), file=sys.stderr)
     assert list(tensor.size()) == size
 
 
