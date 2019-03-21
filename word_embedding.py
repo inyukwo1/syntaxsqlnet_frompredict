@@ -33,8 +33,8 @@ class WordEmbedding(nn.Module):
             print("Using fixed embedding")
 
     def word_find(self, word):
-        word = ''.join([i for i in word if i.isalpha()])
-        word = word.lower()
+        # word = ''.join([i for i in word if i.isalpha()])
+        # word = word.lower()
         return self.word_emb.get(word, np.zeros(self.N_word, dtype=np.float32))
 
     def gen_x_q_batch(self, q):

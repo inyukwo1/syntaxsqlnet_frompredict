@@ -21,6 +21,7 @@ from models.andor_predictor import AndOrPredictor
 from models.op_predictor import OpPredictor
 from models.find_predictor import FindPredictor
 from preprocess_train_dev_data import index_to_column_name
+from copy import deepcopy
 
 
 SQL_OPS = ('none','intersect', 'union', 'except')
@@ -88,6 +89,14 @@ def to_batch_tables(tables, B, table_type):
     return col_seq, tab_name_seq, par_tab_num_seq, foreign_keys
 
 
+def col_candidates_from_tables(from_tables, column_names):
+    col_candidates = []
+    for idx, (par_tab, _) in enumerate(column_names):
+        if par_tab == -1 or par_tab in from_tables:
+            col_candidates.append(idx)
+    return col_candidates
+
+
 class SuperModel(nn.Module):
     def __init__(self, word_emb, N_word, N_h=300, N_depth=2, gpu=True, trainable_emb=False, table_type="std", use_hs=True, bert=None, with_from=False):
         super(SuperModel, self).__init__()
@@ -99,7 +108,7 @@ class SuperModel(nn.Module):
         self.use_hs = use_hs
         self.with_from = with_from
         self.SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
-        use_bert = False if bert is None else True
+        use_bert = False
 
 
         # word embedding layer
@@ -133,7 +142,7 @@ class SuperModel(nn.Module):
         self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=None)
         self.andor.eval()
 
-        self.from_table = FindPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
+        self.from_table = FindPredictor(N_word=N_word, N_h=200, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
         self.from_table.eval()
 
         self.softmax = nn.Softmax() #dim=1
@@ -239,9 +248,21 @@ class SuperModel(nn.Module):
                 # history[0].append("root")
             elif vet == "none":
                 if self.with_from:
-                    from_score = self.from_table.forward(par_tab_nums, foreign_keys, q_emb_var, q_len, hs_emb_var, hs_len,
-                                      col_emb_var, col_len, col_name_len, table_emb_var, table_len, table_name_len)
-                    from_tables = self.from_table.score_to_tables(from_score)
+                    one_q_seq = q_seq[0]
+                    one_hs_emb_var = hs_emb_var[0]
+                    one_hs_len = hs_len[0]
+
+                    one_tab_names = tables["table_names"]
+                    table_num = len(one_tab_names)
+                    new_hs_emb_var = [one_hs_emb_var] * table_num
+                    new_hs_emb_var = torch.stack(new_hs_emb_var)
+                    new_hs_len = np.array([one_hs_len] * table_num, dtype=np.int64)
+                    one_cols = tables["column_names"]
+                    parent_nums = [idx for idx, _ in one_cols]
+                    new_q_emb, new_q_len = self.embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols)
+                    from_score = self.from_table.forward(new_q_emb, new_q_len, new_hs_emb_var, new_hs_len)
+                    from_tables, from_graph = self.from_table.score_to_tables(from_score, tables["foreign_keys"], parent_nums)
+                    current_sql["from"] = from_graph
                 else:
                     from_tables = None
                 score = self.key_word.forward(q_emb_var,q_len,hs_emb_var,hs_len,kw_emb_var,kw_len)
@@ -268,9 +289,13 @@ class SuperModel(nn.Module):
             # elif vet == "groupBy":
             #     score = self.having.forward(q_emb_var,q_len,hs_emb_var,hs_len,col_emb_var,col_len,)
             elif isinstance(vet,tuple) and vet[0] == "col":
-                # print("q_emb_var:{} hs_emb_var:{} col_emb_var:{}".format(q_emb_var.size(), hs_emb_var.size(),col_emb_var.size()))
-                from_tables = vet[2]
-                score = self.col.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, from_tables)
+                if self.with_from:
+                    from_tables = vet[2]
+                    one_col_candidates = col_candidates_from_tables(from_tables, tables["column_names"])
+                    col_candidates = [one_col_candidates] * B
+                else:
+                    col_candidates = None
+                score = self.col.forward(q_emb_var, q_len, hs_emb_var, hs_len, col_emb_var, col_len, col_name_len, col_candidates)
                 col_num_score, col_score = [x.data.cpu().numpy() for x in score]
                 col_num = np.argmax(col_num_score[0]) + 1  # double check
                 cols = np.argsort(-col_score[0])[:col_num]
@@ -634,6 +659,34 @@ class SuperModel(nn.Module):
         #     print("error in generate from clause!!!!!")
         return table_alias_dict,ret
 
+    def gen_from_graph(self, from_graph, table):
+        if len(from_graph) == 1:
+            ret = "from {}".format(table["table_names_original"][list(from_graph)[0]])
+            return {}, ret
+        copied_table = deepcopy(from_graph)
+        print(copied_table)
+        start = list(from_graph.keys())[0]
+        table_alias_dict = {start: 1}
+        ret = "from {} as T1".format(table["table_names_original"][start])
+        while len(table_alias_dict) < len(from_graph):
+            for tab_num in table_alias_dict:
+                added = False
+                for edge in from_graph[tab_num]:
+                    if edge[2] in table_alias_dict:
+                        from_graph[tab_num].remove(edge)
+                        break
+                    table_alias_dict[edge[2]] = len(table_alias_dict) + 1
+                    added = True
+                    ret += " join {} as T{} on T{}.{} = T{}.{}".format(table["table_names_original"][edge[2]],
+                                                                       len(table_alias_dict),
+                                                                       table_alias_dict[tab_num], table["column_names_original"][edge[0]][1],
+                                                                       table_alias_dict[edge[2]], table["column_names_original"][edge[1]][1])
+                    from_graph[tab_num].remove(edge)
+                    break
+                if added:
+                    break
+        return table_alias_dict, ret
+
     def gen_sql(self, sql,table):
         select_clause = ""
         from_clause = ""
@@ -662,7 +715,10 @@ class SuperModel(nn.Module):
                 if isinstance(item,tuple) and len(item) == 3:
                     if table["column_names"][item[2]][0] != -1:
                         candidate_tables.add(table["column_names"][item[2]][0])
-        table_alias_dict,from_clause = self.gen_from(candidate_tables,table)
+        if not self.with_from:
+            table_alias_dict, from_clause = self.gen_from(candidate_tables,table)
+        else:
+            table_alias_dict, from_clause = self.gen_from_graph(sql["from"], table)
         ret = []
         if "select" in sql:
             select_clause = self.gen_select(sql["select"],"select",table,table_alias_dict)

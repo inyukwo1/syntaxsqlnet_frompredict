@@ -330,7 +330,7 @@ def from_acc(model, embed_layer, data):
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
-        correct, graph_correct = model.check_eval_acc(score, one_label, foreign_keys, parent_tables)
+        correct, graph_correct = model.check_eval_acc(score, one_label, foreign_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
         if not correct:
             total_err += 1.
         if not graph_correct:
@@ -482,8 +482,6 @@ def test_acc(model, batch_size, data,output_path):
     table_dict = get_table_dict("./data/tables.json")
     f = open(output_path,"w")
     for idx, item in enumerate(data[:]):
-        if idx != 120:
-            continue
         print("processing {}".format(idx), flush=True)
         db_id = item["db_id"]
         if db_id not in table_dict: print(("Error %s not in table_dict" % db_id))

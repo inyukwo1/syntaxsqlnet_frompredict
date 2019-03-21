@@ -25,6 +25,7 @@ import sqlite3
 import traceback
 import argparse
 import random
+from copy import deepcopy
 
 from process_sql import tokenize, get_schema, get_tables_with_alias, Schema, get_sql
 
@@ -143,9 +144,13 @@ def eval_from(pred, label):
             cnt += 1
             label_table_units.remove(unit)
     for unit in pred_conds:
+        sameunit = (unit[0], unit[1], (0, unit[3], None), unit[2][1], unit[4])
         if unit in label_conds:
             cnt += 1
             label_conds.remove(unit)
+        elif sameunit in label_conds:
+            cnt += 1
+            label_conds.remove(sameunit)
     return label_total, pred_total, cnt
 
 
@@ -422,6 +427,7 @@ class Evaluator:
         label_total, pred_total, cnt = eval_from(pred, label)
         acc, rec, f1 = get_scores(cnt, pred_total, label_total)
         res['from'] = {'acc': acc, 'rec': rec, 'f1': f1,'label_total':label_total,'pred_total':pred_total}
+        print(acc)
 
         label_total, pred_total, cnt, cnt_wo_agg = eval_where(pred, label)
         acc, rec, f1 = get_scores(cnt, pred_total, label_total)
@@ -507,7 +513,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
     with open(predict) as f:
         plist = [l.strip().split('\t') for l in f.readlines() if len(l.strip()) > 0]
     mixed_list = list(zip(glist, plist))
-    random.shuffle(mixed_list)
+    # random.shuffle(mixed_list)
     glist, plist = zip(*mixed_list)
     # plist = [("select max(Share),min(Share) from performance where Type != 'terminal'", "orchestra")]
     # glist = [("SELECT max(SHARE) ,  min(SHARE) FROM performance WHERE TYPE != 'Live final'", "orchestra")]
@@ -528,7 +534,7 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
     eval_err_num = 0
     compound_correct = 0
     compound_detect = 0
-    for p, g in zip(plist, glist):
+    for q_idx, (p, g) in enumerate(zip(plist, glist)):
         p_str = p[0]
         g_str, db = g
         db_name = db
@@ -564,7 +570,6 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
             }
             eval_err_num += 1
             print(("eval_err_num:{}".format(eval_err_num)))
-
         # rebuild sql for value evaluation
         kmap = kmaps[db_name]
         g_valid_col_units = build_valid_col_units(g_sql['from']['table_units'], schema)
@@ -585,7 +590,14 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
                 compound_detect += 1
                 compound_correct += exact_score
             partial_scores = evaluator.partial_scores
+            print("idx: {}".format(q_idx))
             if exact_score == 0:
+                print("WRONG!")
+                print(("{} pred: {}".format(hardness,p_str)))
+                print(("{} gold: {}".format(hardness,g_str)))
+                print("")
+            else:
+                print("CORRECT!")
                 print(("{} pred: {}".format(hardness,p_str)))
                 print(("{} gold: {}".format(hardness,g_str)))
                 print("")
@@ -821,7 +833,7 @@ def rebuild_sql_col(valid_col_units, sql, kmap):
         return sql
 
     sql['select'] = rebuild_select_col(valid_col_units, sql['select'], kmap)
-    sql['from'] = rebuild_from_col(valid_col_units, sql['from'], kmap)
+    # sql['from'] = rebuild_from_col(valid_col_units, sql['from'], kmap)
     sql['where'] = rebuild_condition_col(valid_col_units, sql['where'], kmap)
     sql['groupBy'] = rebuild_group_by_col(valid_col_units, sql['groupBy'], kmap)
     sql['orderBy'] = rebuild_order_by_col(valid_col_units, sql['orderBy'], kmap)

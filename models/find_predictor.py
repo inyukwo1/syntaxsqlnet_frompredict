@@ -8,7 +8,7 @@ from models.net_utils import run_lstm, col_tab_name_encode, encode_question, SIZ
 from pytorch_pretrained_bert import BertModel
 
 
-def graph_maker(tab_list, foreign_keys, parent_tables):
+def sql_graph_maker(tab_list, foreign_keys, parent_tables):
     graph = {}
     for tab in tab_list:
         graph[tab] = []
@@ -17,20 +17,77 @@ def graph_maker(tab_list, foreign_keys, parent_tables):
             continue
         for f, p in foreign_keys:
             if parent_tables[f] == tab and parent_tables[p] in tab_list:
-                graph[tab] = [f]
-                graph[parent_tables[p]].append(p)
+                graph[tab].append((f, p, parent_tables[p]))
+                graph[parent_tables[p]].append((p, f, tab))
             elif parent_tables[p] == tab and parent_tables[f] in tab_list:
-                graph[tab] = [p]
-                graph[parent_tables[f]].append(f)
-    while len(graph) > 1:
+                graph[tab].append((p, f, parent_tables[f]))
+                graph[parent_tables[f]].append((f, p, tab))
+
+    def unreachable(graph, t):
+        reached = set()
+        reached.add(t)
+        added = True
+        while added:
+            added = False
+            for tab in graph:
+                for edge in graph[tab]:
+                    if edge[2] in reached and tab not in reached:
+                        reached.add(tab)
+                        added = True
+                    if tab in reached and edge[2] not in reached:
+                        reached.add(edge[2])
+                        added = True
+        for tab in graph:
+            if tab not in reached:
+                return True
+        return False
+
+    while len(graph) > 1: # TODO pop lower score first
         delete = False
         for t in graph:
-            if not graph[t]:
+            if unreachable(graph, t):
                 delete = True
                 break
         if not delete:
             break
         graph.pop(t)
+        for another_t in graph:
+            for edge in graph[another_t]:
+                if edge[2] == t:
+                    graph[another_t].remove(edge)
+                    break
+    return graph
+
+
+def graph_maker(tab_list, foreign_keys, parent_tables):
+    # graph = {}
+    # for tab in tab_list:
+    #     graph[tab] = []
+    # for tab in tab_list:
+    #     if graph[tab]:
+    #         continue
+    #     for f, p in foreign_keys:
+    #         if parent_tables[f] == tab and parent_tables[p] in tab_list:
+    #             graph[tab] = [f]
+    #             graph[parent_tables[p]].append(p)
+    #         elif parent_tables[p] == tab and parent_tables[f] in tab_list:
+    #             graph[tab] = [p]
+    #             graph[parent_tables[f]].append(f)
+    # while len(graph) > 1:
+    #     delete = False
+    #     for t in graph:
+    #         if not graph[t]:
+    #             delete = True
+    #             break
+    #     if not delete:
+    #         break
+    #     graph.pop(t)
+    sql_graph = sql_graph_maker(tab_list, foreign_keys, parent_tables)
+    for t in sql_graph:
+        for idx, _ in enumerate(sql_graph[t]):
+            sql_graph[t][idx] = sql_graph[t][idx][0]
+        sql_graph[t] = list(set(sql_graph[t]))
+    graph = sql_graph
     return graph
 
 
@@ -118,7 +175,7 @@ class FindPredictor(nn.Module):
                 err += 1
         return np.array(err)
 
-    def check_eval_acc(self, score, graph, foreign_keys, parent_tables):
+    def check_eval_acc(self, score, graph, foreign_keys, parent_tables, table_names, column_names, question):
         if self.gpu:
             score = F.tanh(score).data.cpu().numpy()
         else:
@@ -137,30 +194,49 @@ class FindPredictor(nn.Module):
 
         if not tabs:
             tabs.append(np.argmax(score))
+        sorted_score_arg = np.argsort(score)
+        new_tabs = []
+        for tab in sorted_score_arg:
+            if tab in tabs:
+                new_tabs.append(tab)
+        tabs = new_tabs
         predict_graph = graph_maker(tabs, foreign_keys, parent_tables)
         if not graph_checker(predict_graph, graph):
             graph_correct = False
-        print(score)
-        print("=======")
-        print(predict_graph)
-        print("========")
-        print(graph)
-        print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
+        if not correct:
+            print("#### " + " ".join(question))
+            for idx, table_name in enumerate(table_names):
+                print("Table {}: {}".format(idx, table_name))
+                for col_idx, [par_tab, col_name] in enumerate(column_names):
+                    if par_tab == idx:
+                        print("   {}: {}".format(col_idx, col_name))
+
+            print(score)
+            print("=======")
+            print(predict_graph)
+            print("========")
+            print(graph)
+            print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
         return correct, graph_correct
 
-    def score_to_tables(self, score):
-        score = F.sigmoid(score)
+    def score_to_tables(self, score, foreign_keys, parent_tables):
         if self.gpu:
-            score = [sc.data.cpu().numpy() for sc in score]
+            score = F.tanh(score).data.cpu().numpy()
         else:
-            score = [sc.data.numpy() for sc in score]
-        B = len(score)
-        batch_tables = []
-        for b in range(B):
-            tables = []
-            for entry in range(len(score[b])):
-                if score[b][entry] > self.threshold:
-                    tables.append(entry)
-            batch_tables.append(tables)
-        return batch_tables
+            score = F.tanh(score).data.numpy()
+        tabs = []
+
+        for b in range(len(score)):
+            if score[b] > 0.:
+                tabs.append(b)
+        if not tabs:
+            tabs.append(np.argmax(score))
+        sorted_score_arg = np.argsort(score)
+        new_tabs = []
+        for tab in sorted_score_arg:
+            if tab in tabs:
+                new_tabs.append(tab)
+        tabs = new_tabs
+        predict_graph = sql_graph_maker(tabs, foreign_keys, parent_tables)
+        return list(predict_graph.keys()), predict_graph
 

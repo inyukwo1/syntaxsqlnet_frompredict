@@ -28,11 +28,11 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-load_path="${data_root}/saved_models_trial41/"
+load_path="${data_root}/saved_models_trial44/"
 log_dir=${save_dir}/train_log
 
 
-export CUDA_VISIBLE_DEVICES=6
+export CUDA_VISIBLE_DEVICES=5
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
 module=from
 epoch=600

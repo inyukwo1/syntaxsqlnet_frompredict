@@ -66,7 +66,7 @@ if __name__ == '__main__':
 
     bert = berter
 
-    model = SuperModel(word_emb, N_word=N_word, gpu=GPU, trainable_emb = args.train_emb, table_type=args.table_type, use_hs=use_hs, bert=bert)
+    model = SuperModel(word_emb, N_word=N_word, gpu=GPU, trainable_emb = args.train_emb, table_type=args.table_type, use_hs=use_hs, bert=bert, with_from=args.with_from)
 
     # agg_m, sel_m, cond_m = best_model_name(args)
     # torch.save(model.state_dict(), "saved_models/{}_models.dump".format(args.train_component))

@@ -115,9 +115,8 @@ if __name__ == '__main__':
 
     print_flag = False
     model.load_state_dict(torch.load(args.load_path + "/{}_models.dump".format(args.train_component)))
-    bert_model.load_state_dict(torch.load(args.load_path + "/bert_{}_models.dump".format(args.train_component)))
     if BERT:
-        bert.load_state_dict(torch.load(args.load_path + "/bert_{}_models.dump".format(args.train_component)))
+        bert_model.load_state_dict(torch.load(args.load_path + "/bert_{}_models.dump".format(args.train_component)))
     embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=BERT, trainable=False)
     if args.train_component == "from":
         acc = from_acc(model, embed_layer, dev_data)

@@ -11,7 +11,7 @@ python test.py \
     --output_path     ${SAVE_PATH}/dev_result.txt \
     --history_type    full \
     --table_type      std \
-     > ${SAVE_PATH}/dev_result.out.txt &
+    --with_from
 
 
 ## - aug
