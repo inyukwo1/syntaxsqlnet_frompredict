@@ -96,12 +96,12 @@ class WordEmbedding(nn.Module):
             current_sep_num = 0
             for table_num in generated_tables:
                 table_name = tables[idx][table_num]
-                input_q += " [SEP] " + table_name
+                input_q += " [SEP] " + table_name + " contains"
                 table_sep_nums.append(current_sep_num)
                 current_sep_num += 1
                 for par_tab, col_name in table_cols[idx]:
                     if par_tab == table_num:
-                        input_q += " / " + col_name
+                        input_q += " , " + col_name
                         current_sep_num += 1
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
             indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
