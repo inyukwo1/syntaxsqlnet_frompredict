@@ -120,42 +120,22 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.attention = nn.Sequential(nn.Linear(N_h + self.encoded_num, 1), nn.Sigmoid())
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, table_locs, table_sep_locs, hs_emb_var, hs_len):
+    def forward(self, q_emb, q_len, hs_emb_var, hs_len, selected_tables):
         B = len(q_len)
 
-        q_enc = self.q_bert(q_emb, q_len, table_locs, table_sep_locs)
+        q_enc = self.q_bert(q_emb, q_len, selected_tables)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
-        batch_reses = []
-        for b in range(len(q_enc)):
-            sep_tensors = []
-            for idx, sep_loc in enumerate(table_sep_locs[b]):
-                if len(table_sep_locs[b]) == idx + 1:
-                    ed = q_len[b]
-                else:
-                    ed = table_sep_locs[b][idx + 1]
-
-                x = torch.cat((q_enc[b, sep_loc:ed], hs_enc[b].unsqueeze(0).expand(ed - sep_loc, -1)), dim=1)
-                attention_score = self.attention(x)
-                x = x * attention_score
-                x = torch.sum(x, dim=0)
-                sep_tensors.append(x)
-            sep_tensors = torch.stack(sep_tensors)
-            res = self.outer2(self.outer1(sep_tensors)).squeeze(1)
-            if len(res) < 3:
-                padding = torch.ones(3 - len(res)) * -100
-                if torch.cuda.is_available():
-                    padding = padding.cuda()
-                res = torch.cat((res, padding))
-            batch_reses.append(res)
-        batch_reses = torch.stack(batch_reses)
-        return batch_reses
+        q_enc = q_enc[:, 0, :]
+        q_enc = torch.cat((q_enc, hs_enc), dim=1)
+        x = self.outer1(q_enc)
+        x = self.outer2(x).squeeze()
+        return x
 
     def loss(self, score, labels):
         loss = F.binary_cross_entropy_with_logits(score, labels)
@@ -172,11 +152,10 @@ class FindPredictor(nn.Module):
             score = F.tanh(score).data.numpy()
             truth = truth.numpy()
         for b in range(B):
-            for idx in range(3):
-                if score[b][idx] > 0. and truth[b][idx] < 0.5:
-                    err += 1
-                elif score[b][idx] <= 0. and truth[b][idx] > 0.5:
-                    err += 1
+            if score[b] > 0. and truth[b] < 0.5:
+                err += 1
+            elif score[b]<= 0. and truth[b] > 0.5:
+                err += 1
         return np.array(err)
 
     def check_eval_acc(self, score, selected_tagbles, graph, foreign_keys, parent_tables, table_names, column_names, question):
@@ -193,11 +172,13 @@ class FindPredictor(nn.Module):
         correct = False
         graph_correct = True
 
-        for b in range(len(score)):
+        cur = 0
+        for b in range(len(selected_tagbles)):
             for idx, tab in enumerate(selected_tagbles[b]):
                 total_nums[tab] += 1
-                if score[b, idx] > 0.:
+                if score[cur] > 0.:
                     choose_score[tab] += 1
+                cur += 1
         tabs = []
         vote_scores = []
         for i in range(table_num_ed):

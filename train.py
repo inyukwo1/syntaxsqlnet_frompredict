@@ -128,7 +128,7 @@ if __name__ == '__main__':
                model, optimizer, H_PARAM["batch_size"], args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, bert_model=bert_model)))
         bert_model.eval()
         if args.train_component == "from":
-            acc = from_acc(model, embed_layer, dev_data, H_PARAM["batch_size"])
+            acc = from_acc(model, embed_layer, dev_data, 2)
         else:
             acc = epoch_acc(model, 1, args.train_component,embed_layer, dev_data, table_type=args.table_type)
         if acc > best_acc:
