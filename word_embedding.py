@@ -101,7 +101,7 @@ class WordEmbedding(nn.Module):
                 current_sep_num += 1
                 for par_tab, col_name in table_cols[idx]:
                     if par_tab == table_num:
-                        input_q += " [SEP] " + col_name
+                        input_q += " / " + col_name
                         current_sep_num += 1
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
             indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)

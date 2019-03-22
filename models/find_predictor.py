@@ -106,27 +106,21 @@ def graph_checker(graph1, graph2):
 
 
 class FindPredictor(nn.Module):
-    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert=None):
+    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert):
         super(FindPredictor, self).__init__()
         self.N_h = N_h
         self.gpu = gpu
         self.use_hs = use_hs
         self.threshold = 0.5
 
-        self.use_bert = True if bert else False
-        if bert:
-            self.q_bert = bert
-            self.encoded_num = 1024
-        else:
-            self.q_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
-                num_layers=N_depth, batch_first=True,
-                dropout=0.3, bidirectional=True)
-            self.encoded_num = N_h
+        self.q_bert = bert
+        self.encoded_num = 1024
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
+        self.attention = nn.Sequential(nn.Linear(N_h + self.encoded_num, 1), nn.Sigmoid())
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if gpu:
@@ -135,17 +129,22 @@ class FindPredictor(nn.Module):
     def forward(self, q_emb, q_len, table_locs, table_sep_locs, hs_emb_var, hs_len):
         B = len(q_len)
 
-        if self.use_bert:
-            q_enc = self.q_bert(q_emb, q_len, table_locs, table_sep_locs)
-        else:
-            q_enc, _ = run_lstm(self.q_lstm, q_emb, q_len)
+        q_enc = self.q_bert(q_emb, q_len, table_locs, table_sep_locs)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         batch_reses = []
         for b in range(len(q_enc)):
             sep_tensors = []
-            for sep_loc in table_sep_locs[b]:
-                x = torch.cat((q_enc[b, sep_loc], hs_enc[b]))
+            for idx, sep_loc in enumerate(table_sep_locs[b]):
+                if len(table_sep_locs[b]) == idx + 1:
+                    ed = q_len[b]
+                else:
+                    ed = table_sep_locs[b][idx + 1]
+
+                x = torch.cat((q_enc[b, sep_loc:ed], hs_enc[b].unsqueeze(0).expand(ed - sep_loc, -1)), dim=1)
+                attention_score = self.attention(x)
+                x = x * attention_score
+                x = torch.sum(x, dim=0)
                 sep_tensors.append(x)
             sep_tensors = torch.stack(sep_tensors)
             res = self.outer2(self.outer1(sep_tensors)).squeeze(1)
@@ -167,12 +166,11 @@ class FindPredictor(nn.Module):
         B = len(truth)
         pred = []
         if self.gpu:
-            score = F.tanh(score).data.cpu().numpy()
+            score = torch.tanh(score).data.cpu().numpy()
             truth = truth.cpu().numpy()
         else:
             score = F.tanh(score).data.numpy()
             truth = truth.numpy()
-
         for b in range(B):
             for idx in range(3):
                 if score[b][idx] > 0. and truth[b][idx] < 0.5:
@@ -186,9 +184,12 @@ class FindPredictor(nn.Module):
         total_nums = [0] * table_num_ed
         choose_score = [0] * table_num_ed
         if self.gpu:
-            score = F.tanh(score).data.cpu().numpy()
+            score = torch.tanh(score).data.cpu().numpy()
         else:
-            score = F.tanh(score).data.numpy()
+            score = torch.tanh(score).data.numpy()
+        print(score)
+        print("~~~~~")
+        print(selected_tagbles)
         correct = False
         graph_correct = True
 
@@ -223,7 +224,7 @@ class FindPredictor(nn.Module):
                     if par_tab == idx:
                         print("   {}: {}".format(col_idx, col_name))
 
-            print(vote_score)
+            print(vote_scores)
             print("=======")
             print(predict_graph)
             print("========")
@@ -233,9 +234,9 @@ class FindPredictor(nn.Module):
 
     def score_to_tables(self, score, foreign_keys, parent_tables):
         if self.gpu:
-            score = F.tanh(score).data.cpu().numpy()
+            score = torch.tanh(score).data.cpu().numpy()
         else:
-            score = F.tanh(score).data.numpy()
+            score = torch.tanh(score).data.numpy()
         tabs = []
 
         for b in range(len(score)):
