@@ -134,7 +134,7 @@ class FindPredictor(nn.Module):
         q_enc = q_enc[:, 0, :]
         q_enc = torch.cat((q_enc, hs_enc), dim=1)
         x = self.outer1(q_enc)
-        x = self.outer2(x).squeeze()
+        x = self.outer2(x).squeeze(1)
         return x
 
     def loss(self, score, labels):
@@ -162,10 +162,6 @@ class FindPredictor(nn.Module):
         table_num_ed = len(table_names)
         total_nums = [0] * table_num_ed
         choose_score = [0] * table_num_ed
-        if self.gpu:
-            score = torch.tanh(score).data.cpu().numpy()
-        else:
-            score = torch.tanh(score).data.numpy()
         print(score)
         print("~~~~~")
         print(selected_tagbles)

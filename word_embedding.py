@@ -121,7 +121,7 @@ class WordEmbedding(nn.Module):
         B = len(table_lists)
         q_len = []
         for b in range(B):
-            input_q = "[CLS] " + " ".join(one_q)
+            input_q = "[CLS] [CLS]" + " ".join(one_q)
 
             for table_ord, table_num in enumerate(table_lists[b]):
                 table_name = one_tables[table_num]

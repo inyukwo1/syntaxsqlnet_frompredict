@@ -346,10 +346,11 @@ def from_acc(model, embed_layer, data, max_batch):
             history = [one_history] * (ed - st)
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
             score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len, selected_tables[tab_st:tab_ed])
+            score = torch.tanh(score).data.cpu().numpy()
             scores.append(score)
             st = ed
             tab_st = tab_ed
-        scores = torch.cat(scores)
+        scores = np.concatenate(scores)
 
         correct, graph_correct = model.check_eval_acc(scores, selected_tables, one_label, foreign_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
         if not correct:
