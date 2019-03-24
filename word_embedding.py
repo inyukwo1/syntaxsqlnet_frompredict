@@ -83,7 +83,7 @@ class WordEmbedding(nn.Module):
         selected_tables = []
         q_len = []
         for idx, one_q in enumerate(q):
-            input_q = "[CLS] " + " ".join(one_q)
+            input_q = "[CLS] [CLS] " + " ".join(one_q)
             parent_tables = []
             for t, c in table_cols[idx]:
                 parent_tables.append(t)

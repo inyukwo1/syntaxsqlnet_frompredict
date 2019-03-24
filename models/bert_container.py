@@ -29,7 +29,7 @@ class BertContainer:
     def __init__(self):
         self.main_bert = BertModel.from_pretrained('bert-large-cased')
         self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
-        info_adder = nn.Sequential(nn.Linear(1024, 1024), nn.Sigmoid())
+        info_adder = nn.Sequential(nn.Linear(1024, 1024), nn.ReLU())
         self.foreign_info_adder = nn.ModuleList([copy.deepcopy(info_adder) for _ in range(24)])
         if torch.cuda.is_available():
             self.main_bert.cuda()
