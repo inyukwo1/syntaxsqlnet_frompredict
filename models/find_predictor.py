@@ -120,22 +120,61 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
+        self.self_layers = nn.ModuleList([nn.Linear(N_h, N_h)] * 3)
+        self.foreign_layers = nn.ModuleList([nn.Linear(N_h, N_h)] * 3)
+
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, hs_emb_var, hs_len, selected_tables):
+    def forward(self, q_emb, q_len, hs_emb_var, hs_len, selected_tables, parent_tables, foreign_keys):
         B = len(q_len)
 
-        q_enc = self.q_bert(q_emb, q_len, selected_tables)
+        q_enc = self.q_bert(q_emb, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         q_enc = q_enc[:, 0, :]
         q_enc = torch.cat((q_enc, hs_enc), dim=1)
         x = self.outer1(q_enc)
+
+        listed_x = []
+        for b in range(B):
+            listed_x.append(x[b])
+
+        listed_x = self.rgcn_layer(0, listed_x, selected_tables, parent_tables, foreign_keys)
+        listed_x = self.rgcn_layer(1, listed_x, selected_tables, parent_tables, foreign_keys)
+        listed_x = self.rgcn_layer(2, listed_x, selected_tables, parent_tables, foreign_keys)
+        x = torch.stack(listed_x)
+
         x = self.outer2(x).squeeze(1)
         return x
+
+    def rgcn_layer(self, layer_num, listed_tensor, selected_tables, parent_tables, foreign_keys):
+        for b, x in enumerate(listed_tensor):
+            selected_table_idx = 0
+            selected_table_inside_idx = -1
+            selected_table_num = 0
+            for inside_idx, one_selected_table in enumerate(selected_tables):
+                if b < selected_table_num + len(one_selected_table):
+                    selected_table_inside_idx = b - selected_table_num
+                    break
+                selected_table_num += len(one_selected_table)
+                selected_table_idx += 1
+            self_new_x = self.self_layers[layer_num](x)
+            x_tab = selected_tables[selected_table_idx][selected_table_inside_idx]
+
+            for f, p in foreign_keys[selected_table_idx]:
+                for_parent = parent_tables[selected_table_idx][f]
+                pri_parent = parent_tables[selected_table_idx][p]
+                for inside_idx, t in enumerate(selected_tables[selected_table_idx]):
+                    outside_idx = inside_idx + selected_table_num
+                    if for_parent == x_tab and pri_parent == t:
+                        self_new_x += self.foreign_layers[layer_num](listed_tensor[outside_idx])
+                    elif pri_parent == x_tab and for_parent == t:
+                        self_new_x += self.foreign_layers[layer_num](listed_tensor[outside_idx])
+            listed_tensor[b] = F.relu(self_new_x)
+        return listed_tensor
 
     def loss(self, score, labels):
         loss = F.binary_cross_entropy_with_logits(score, labels)

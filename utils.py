@@ -271,18 +271,23 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
         elif component == "from":
             tabs = []
             cols = []
+            parent_tabs = []
             foreign_keys = []
             for i in range(st, ed):
+                one_par_tab = []
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
                 foreign_keys.append(data[perm[i]]["ts"][3])
+                for t, _ in data[perm[i]]["ts"][1]:
+                    one_par_tab.append(t)
+                parent_tabs.append(one_par_tab)
             q_emb, q_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys)
             new_history = []
             for q_num, one_selected in enumerate(selected_tables):
                 for _ in range(len(one_selected)):
                     new_history.append(history[q_num])
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(new_history)
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, selected_tables)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, selected_tables, parent_tabs, foreign_keys)
             new_labels = []
             for b, tables in enumerate(selected_tables):
                 for table in tables:
@@ -345,7 +350,7 @@ def from_acc(model, embed_layer, data, max_batch):
                 ed += len(selected_tables[tab_idx])
             history = [one_history] * (ed - st)
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-            score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len, selected_tables[tab_st:tab_ed])
+            score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len, selected_tables[tab_st:tab_ed], [parent_tables] * (ed - st), [foreign_keys] * (ed - st))
             score = torch.tanh(score).data.cpu().numpy()
             scores.append(score)
             st = ed
@@ -471,11 +476,18 @@ def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_
         elif component == "from":
             tabs = []
             cols = []
+            parent_tabs = []
+            foreign_keys = []
             for i in range(st, ed):
+                one_par_tab = []
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
-            q_emb, q_len, table_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, table_locs)
+                foreign_keys.append(data[perm[i]]["ts"][3])
+                for t, _ in data[perm[i]]["ts"][1]:
+                    one_par_tab.append(t)
+                parent_tabs.append(one_par_tab)
+            q_emb, q_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, selected_tables, parent_tabs, foreign_keys)
         # print("label {}".format(label))
         if component in ("agg","col","keyword","op"):
             num_err, p_err, err = model.check_acc(score, label)

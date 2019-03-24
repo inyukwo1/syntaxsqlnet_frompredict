@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 from pytorch_pretrained_bert import BertTokenizer
-from graph_utils import generate_random_three_hop_path, generate_three_hop_path_from_seed
+from graph_utils import *
 import random
 
 
@@ -87,8 +87,10 @@ class WordEmbedding(nn.Module):
             parent_tables = []
             for t, c in table_cols[idx]:
                 parent_tables.append(t)
-            generated_tables = generate_random_three_hop_path(len(tables[idx]), parent_tables, foreign_keys[idx])
-
+            if random.randint(0, 10) < 5:
+                generated_tables = generate_random_three_hop_path(len(tables[idx]), parent_tables, foreign_keys[idx])
+            else:
+                generated_tables = generate_random_three_table(len(tables[idx]))
             selected_tables.append(generated_tables)
             for table_ord, table_num in enumerate(generated_tables):
                 table_name = tables[idx][table_num]
@@ -121,7 +123,7 @@ class WordEmbedding(nn.Module):
         B = len(table_lists)
         q_len = []
         for b in range(B):
-            input_q = "[CLS] [CLS]" + " ".join(one_q)
+            input_q = "[CLS] " + " ".join(one_q)
 
             for table_ord, table_num in enumerate(table_lists[b]):
                 table_name = one_tables[table_num]

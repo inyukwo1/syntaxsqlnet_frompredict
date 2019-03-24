@@ -1,6 +1,13 @@
 import random
 
 
+def generate_random_three_table(table_num):
+    if table_num >= 3:
+        return random.sample(range(table_num), 3)
+    else:
+        return range(table_num)
+
+
 def generate_random_three_hop_path(table_num, par_tabs, foreign_keys):
     start_table = random.choice(range(table_num))
     generated_tables = next(generate_three_hop_path_from_seed(start_table, par_tabs, foreign_keys))
