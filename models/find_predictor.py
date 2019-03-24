@@ -31,7 +31,7 @@ class FindPredictor(nn.Module):
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.outer = nn.Linear(N_h + self.encoded_num, 1)
+        self.outer = nn.Linear(N_h + self.encoded_num, 6)
         if gpu:
             self.cuda()
 
@@ -51,76 +51,37 @@ class FindPredictor(nn.Module):
             q_enc, _ = run_lstm(self.q_lstm, q_emb, q_len)
         assert list(q_enc.size()) == [B, max_q_len, self.encoded_num]
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        hs_enc = hs_enc[:,0,:].unsqueeze(1).expand(B, max_q_len, self.N_h)
-        q_enc = torch.cat((q_enc, hs_enc), dim=2)
-        x = self.outer(q_enc).squeeze(2)
-        SIZE_CHECK(x, [B, max_q_len])
-        if self.gpu:
-            x = x.cpu()
-        newx = []
-        for b, table_loc in enumerate(table_locs):
-            slice = []
-            for i in range(max_q_len):
-                if i in table_loc:
-                    slice.append(x[b, i])
-            slice = torch.stack(slice)
-            if len(slice) < max_table_len:
-                padding = torch.from_numpy(np.full((max_table_len - len(slice), ), -100., dtype=np.float32))
-                slice = torch.cat((slice, padding))
-            newx.append(slice)
-        newx = torch.stack(newx)
-        if self.gpu:
-            newx = newx.cuda()
-        return newx
+        hs_enc = hs_enc[:,0,:]
+        q_enc = q_enc[:,0,:]
+        q_enc = torch.cat((q_enc, hs_enc), dim=1)
+        x = self.outer(q_enc)
+        return x
 
     def loss(self, score, truth):
-        num_truth = [len(one_truth) - 1 for one_truth in truth]
-        data = torch.from_numpy(np.array(num_truth))
-        if self.gpu:
-            data = data.cuda()
-
-        loss = 0
 
         B = len(truth)
         SIZE_CHECK(score, [B, None])
-        max_table_len = list(score.size())[1]
-        label = []
-        for one_truth in truth:
-            label.append([1. if str(i) in one_truth else 0. for i in range(max_table_len)])
-        label = torch.from_numpy(np.array(label)).type(torch.FloatTensor)
+        label = np.zeros((B, 6), dtype=np.float32)
+        for b in range(B):
+            label[b][len(truth[b]) - 1] = 1.
+        label = torch.from_numpy(label)
         if self.gpu:
             label = label.cuda()
         label = Variable(label)
-        loss += F.binary_cross_entropy_with_logits(score, label)
+        loss = F.binary_cross_entropy_with_logits(score, label)
         return loss
 
     def check_acc(self, score, truth):
         err = 0
         B = len(truth)
-        pred = []
         if self.gpu:
-            score = F.tanh(score).data.cpu().numpy()
+            score = score.data.cpu().numpy()
         else:
-            score = F.tanh(score).data.numpy()
+            score = score.data.numpy()
 
         for b in range(B):
-            cur_pred = {}
-            cur_pred["table"] = []
-            for i, val in enumerate(score[b]):
-                if val > 0.:
-                    cur_pred["table"].append(i)
-            pred.append(cur_pred)
-        for b, (p, t) in enumerate(zip(pred, truth)):
-            tab = p['table']
-            fk_list = []
-            regular = []
-            for l in t:
-                l = int(l)
-                if isinstance(l, list):
-                    fk_list.append(l)
-                else:
-                    regular.append(l)
-            if set(tab) != set(regular):
+            ans = np.argmax(score[b])
+            if ans + 1 != len(truth[b]):
                 err += 1
 
         return np.array(err)
