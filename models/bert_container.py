@@ -61,28 +61,28 @@ class BertContainer:
         x = embedding_output
         for layer_num, layer_module in enumerate(self.main_bert.encoder.layer):
             x = layer_module(x, extended_attention_mask)
-            right_tensors = []
-            cur = 0
-            for one_selected in selected_tables:
-                right_tensors.append(torch.zeros_like(x[0, 0]))
-                for idx in range(len(one_selected) - 1):
-                    right_tensors.append(x[cur + idx, 0])
-                cur += len(one_selected)
-            assert cur == batch_num
-            right_tensors = torch.stack(right_tensors).unsqueeze(1)
-            right_tensors = self.foreign_info_adder[layer_num](right_tensors)
-            left_tensors = []
-            cur = 0
-            for one_selected in selected_tables:
-                for idx in range(1, len(one_selected)):
-                    left_tensors.append(x[cur + idx, 0])
-                left_tensors.append(torch.zeros_like(x[0, 0]))
-                cur += len(one_selected)
-            assert cur == batch_num
-            left_tensors = torch.stack(left_tensors).unsqueeze(1)
-            left_tensors = self.foreign_info_adder[layer_num](left_tensors)
-            padding = torch.zeros_like(right_tensors).expand(-1, max_seq_len - 1, -1)
-            y = torch.cat(((right_tensors + left_tensors), padding), dim=1)
+            # right_tensors = []
+            # cur = 0
+            # for one_selected in selected_tables:
+            #     right_tensors.append(torch.zeros_like(x[0, 0]))
+            #     for idx in range(len(one_selected) - 1):
+            #         right_tensors.append(x[cur + idx, 0])
+            #     cur += len(one_selected)
+            # assert cur == batch_num
+            # right_tensors = torch.stack(right_tensors).unsqueeze(1)
+            # right_tensors = self.foreign_info_adder[layer_num](right_tensors)
+            # left_tensors = []
+            # cur = 0
+            # for one_selected in selected_tables:
+            #     for idx in range(1, len(one_selected)):
+            #         left_tensors.append(x[cur + idx, 0])
+            #     left_tensors.append(torch.zeros_like(x[0, 0]))
+            #     cur += len(one_selected)
+            # assert cur == batch_num
+            # left_tensors = torch.stack(left_tensors).unsqueeze(1)
+            # left_tensors = self.foreign_info_adder[layer_num](left_tensors)
+            # padding = torch.zeros_like(right_tensors).expand(-1, max_seq_len - 1, -1)
+            # y = torch.cat(((right_tensors + left_tensors), padding), dim=1)
             # if 10 <= layer_num <= 15:
             # x = x + y
 

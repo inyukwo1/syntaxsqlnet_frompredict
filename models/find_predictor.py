@@ -125,17 +125,26 @@ class FindPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, q_nl_len, hs_emb_var, hs_len, selected_tables):
+    def forward(self, q_emb, q_len, q_nl_len, hs_emb_var, hs_len, table_sep_locs, selected_tables):
         B = len(q_len)
 
         q_enc = self.q_bert(q_emb, q_len, q_nl_len, selected_tables)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
-        q_enc = q_enc[:, 0, :]
-        q_enc = torch.cat((q_enc, hs_enc), dim=1)
-        x = self.outer1(q_enc)
-        x = self.outer2(x).squeeze(1)
-        return x
+        batch_res = []
+        for b, (sep1, sep2) in enumerate(table_sep_locs):
+            x1 = torch.cat((q_enc[b, sep1:sep2], hs_enc[b].expand(sep2 - sep1, -1)), dim=1)
+            x1 = self.outer1(x1)
+            x1 = self.outer2(torch.sum(x1, dim=0))
+
+            x2 = torch.cat((q_enc[b, sep1:q_len[b]], hs_enc[b].expand(q_len[b] - sep1, -1)), dim=1)
+            x2 = self.outer1(x2)
+            x2 = self.outer2(torch.sum(x2, dim=0))
+
+            res = torch.stack([x1, x2])
+            batch_res.append(res)
+        batch_res = torch.stack(batch_res).squeeze(2)
+        return batch_res
 
     def loss(self, score, labels):
         loss = F.binary_cross_entropy_with_logits(score, labels)
@@ -152,10 +161,11 @@ class FindPredictor(nn.Module):
             score = F.tanh(score).data.numpy()
             truth = truth.numpy()
         for b in range(B):
-            if score[b] > 0. and truth[b] < 0.5:
-                err += 1
-            elif score[b]<= 0. and truth[b] > 0.5:
-                err += 1
+            for idx in range(2):
+                if score[b][idx] > 0. and truth[b][idx] < 0.5:
+                    err += 1
+                elif score[b][idx] <= 0. and truth[b][idx] > 0.5:
+                    err += 1
         return np.array(err)
 
     def check_eval_acc(self, score, selected_tagbles, graph, foreign_keys, parent_tables, table_names, column_names, question):
@@ -168,13 +178,11 @@ class FindPredictor(nn.Module):
         correct = False
         graph_correct = True
 
-        cur = 0
-        for b in range(len(selected_tagbles)):
+        for b in range(len(score)):
             for idx, tab in enumerate(selected_tagbles[b]):
                 total_nums[tab] += 1
-                if score[cur] > 0.:
+                if score[b, idx] > 0.:
                     choose_score[tab] += 1
-                cur += 1
         tabs = []
         vote_scores = []
         for i in range(table_num_ed):
