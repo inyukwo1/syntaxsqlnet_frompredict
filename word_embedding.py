@@ -78,12 +78,12 @@ class WordEmbedding(nn.Module):
             tokenized_q = tokenized_q.cuda()
         return tokenized_q, q_len
 
-    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys):
+    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys, types):
         tokenized_q = []
         selected_tables = []
         q_len = []
         for idx, one_q in enumerate(q):
-            input_q = "[CLS] [CLS] " + " ".join(one_q)
+            input_q = "[CLS] " + " ".join(one_q)
             parent_tables = []
             for t, c in table_cols[idx]:
                 parent_tables.append(t)
@@ -93,9 +93,9 @@ class WordEmbedding(nn.Module):
             for table_ord, table_num in enumerate(generated_tables):
                 table_name = tables[idx][table_num]
                 table_added_input_q = input_q + " [SEP] " + table_name
-                for par_tab, col_name in table_cols[idx]:
+                for col_num, (par_tab, col_name) in enumerate(table_cols[idx]):
                     if par_tab == table_num:
-                        table_added_input_q += " [SEP] " + col_name
+                        table_added_input_q += " [SEP] " + col_name + " " + types[idx][col_num]
                 tokenozed_one_q = self.bert_tokenizer.tokenize(table_added_input_q)
                 indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
                 tokenized_q.append(indexed_one_q)
@@ -109,7 +109,7 @@ class WordEmbedding(nn.Module):
             tokenized_q = tokenized_q.cuda()
         return tokenized_q, q_len, selected_tables
 
-    def gen_bert_for_eval(self, one_q, one_tables, one_cols, foreign_keys):
+    def gen_bert_for_eval(self, one_q, one_tables, one_cols, foreign_keys, types):
         tokenized_q = []
         parent_nums = []
         for par_tab, _ in one_cols:
@@ -121,14 +121,14 @@ class WordEmbedding(nn.Module):
         B = len(table_lists)
         q_len = []
         for b in range(B):
-            input_q = "[CLS] [CLS]" + " ".join(one_q)
+            input_q = "[CLS] " + " ".join(one_q)
 
             for table_ord, table_num in enumerate(table_lists[b]):
                 table_name = one_tables[table_num]
                 table_added_input_q = input_q + " [SEP] " + table_name
-                for par_tab, col_name in one_cols:
+                for col_num, (par_tab, col_name) in enumerate(one_cols):
                     if par_tab == table_num:
-                        table_added_input_q += " [SEP] " + col_name
+                        table_added_input_q += " [SEP] " + col_name + " " + types[col_num]
                 tokenozed_one_q = self.bert_tokenizer.tokenize(table_added_input_q)
                 indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
                 tokenized_q.append(indexed_one_q)

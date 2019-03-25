@@ -272,11 +272,13 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
             tabs = []
             cols = []
             foreign_keys = []
+            types = []
             for i in range(st, ed):
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
                 foreign_keys.append(data[perm[i]]["ts"][3])
-            q_emb, q_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys)
+                types.append(data[perm[i]]["ts"][2])
+            q_emb, q_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, types)
             new_history = []
             for q_num, one_selected in enumerate(selected_tables):
                 for _ in range(len(one_selected)):
@@ -328,10 +330,11 @@ def from_acc(model, embed_layer, data, max_batch):
         one_tab_names = datum["ts"][0]
         one_cols = datum["ts"][1]
         foreign_keys = datum["ts"][3]
+        types = datum["ts"][2]
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
-        q_emb, q_len, selected_tables = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys)
+        q_emb, q_len, selected_tables = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, types)
         st = 0
         tab_st = 0
         b = len(q_emb)

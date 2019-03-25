@@ -29,7 +29,7 @@ class BertContainer:
     def __init__(self):
         self.main_bert = BertModel.from_pretrained('bert-large-cased')
         self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
-        info_adder = nn.Sequential(nn.Linear(1024, 1024), nn.ReLU())
+        info_adder = nn.Sequential(nn.Linear(1024, 1024), nn.ReLU(), nn.Linear(1024, 1024), nn.ReLU())
         self.foreign_info_adder = nn.ModuleList([copy.deepcopy(info_adder) for _ in range(24)])
         if torch.cuda.is_available():
             self.main_bert.cuda()
@@ -75,10 +75,10 @@ class BertContainer:
             assert cur == batch_num
             left_tensors = torch.stack(left_tensors).unsqueeze(1)
             left_tensors = self.foreign_info_adder[layer_num](left_tensors)
-            padding = torch.zeros_like(right_tensors).expand(-1, max_seq_len - 2, -1)
-            y = torch.cat((torch.zeros_like(right_tensors), (right_tensors + left_tensors), padding), dim=1)
-            if 3 <= layer_num <= 6:
-                x = x + y
+            padding = torch.zeros_like(right_tensors).expand(-1, max_seq_len - 1, -1)
+            y = torch.cat(((right_tensors + left_tensors), padding), dim=1)
+            # if 10 <= layer_num <= 15:
+            # x = x + y
 
         return x
 
