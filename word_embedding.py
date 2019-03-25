@@ -78,10 +78,11 @@ class WordEmbedding(nn.Module):
             tokenized_q = tokenized_q.cuda()
         return tokenized_q, q_len
 
-    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys, types):
+    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys):
         tokenized_q = []
         selected_tables = []
         q_len = []
+        q_nl_len = []
         for idx, one_q in enumerate(q):
             input_q = "[CLS] " + " ".join(one_q)
             parent_tables = []
@@ -95,11 +96,12 @@ class WordEmbedding(nn.Module):
                 table_added_input_q = input_q + " [SEP] " + table_name
                 for col_num, (par_tab, col_name) in enumerate(table_cols[idx]):
                     if par_tab == table_num:
-                        table_added_input_q += " [SEP] " + col_name + " " + types[idx][col_num]
+                        table_added_input_q += " [SEP] " + col_name
                 tokenozed_one_q = self.bert_tokenizer.tokenize(table_added_input_q)
                 indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
                 tokenized_q.append(indexed_one_q)
                 q_len.append(len(indexed_one_q))
+                q_nl_len.append(len(self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize(input_q))))
 
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
@@ -107,9 +109,9 @@ class WordEmbedding(nn.Module):
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, selected_tables
+        return tokenized_q, q_len, q_nl_len, selected_tables
 
-    def gen_bert_for_eval(self, one_q, one_tables, one_cols, foreign_keys, types):
+    def gen_bert_for_eval(self, one_q, one_tables, one_cols, foreign_keys):
         tokenized_q = []
         parent_nums = []
         for par_tab, _ in one_cols:
@@ -120,6 +122,7 @@ class WordEmbedding(nn.Module):
 
         B = len(table_lists)
         q_len = []
+        q_nl_len = []
         for b in range(B):
             input_q = "[CLS] " + " ".join(one_q)
 
@@ -128,11 +131,12 @@ class WordEmbedding(nn.Module):
                 table_added_input_q = input_q + " [SEP] " + table_name
                 for col_num, (par_tab, col_name) in enumerate(one_cols):
                     if par_tab == table_num:
-                        table_added_input_q += " [SEP] " + col_name + " " + types[col_num]
+                        table_added_input_q += " [SEP] " + col_name
                 tokenozed_one_q = self.bert_tokenizer.tokenize(table_added_input_q)
                 indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
                 tokenized_q.append(indexed_one_q)
                 q_len.append(len(indexed_one_q))
+                q_nl_len.append(len(self.bert_tokenizer.convert_tokens_to_ids(self.bert_tokenizer.tokenize(input_q))))
 
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
@@ -140,7 +144,7 @@ class WordEmbedding(nn.Module):
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, table_lists
+        return tokenized_q, q_len, q_nl_len, table_lists
 
     def gen_x_history_batch(self, history):
         B = len(history)

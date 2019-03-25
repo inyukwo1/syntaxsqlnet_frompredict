@@ -38,7 +38,7 @@ class BertContainer:
         self.other_optimizer = torch.optim.Adam(self.foreign_info_adder.parameters(), lr=H_PARAM["learning_rate"])
         self.main_bert_optimizer = torch.optim.Adam(self.main_bert.parameters(), lr=H_PARAM["bert_learning_rate"])
 
-    def bert(self, inp, inp_len, selected_tables):
+    def bert(self, inp, inp_len, inp_nl_len, selected_tables):
         [batch_num, max_seq_len] = list(inp.size())
         mask = np.zeros((batch_num, max_seq_len), dtype=np.float32)
         for idx, leng in enumerate(inp_len):
@@ -50,7 +50,13 @@ class BertContainer:
         extended_attention_mask = mask.unsqueeze(1).unsqueeze(2)
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.main_bert.parameters()).dtype)
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        embedding_output = self.main_bert.embeddings(inp)
+        token_type_ids = np.zeros((batch_num, max_seq_len), dtype=np.float32)
+        for idx, leng in enumerate(inp_nl_len):
+            token_type_ids[idx, leng:] = np.ones(max_seq_len - leng, dtype=np.float32)
+        token_type_ids = torch.LongTensor(token_type_ids)
+        if torch.cuda.is_available():
+            token_type_ids = token_type_ids.cuda()
+        embedding_output = self.main_bert.embeddings(inp, token_type_ids)
 
         x = embedding_output
         for layer_num, layer_module in enumerate(self.main_bert.encoder.layer):

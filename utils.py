@@ -277,14 +277,13 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
                 foreign_keys.append(data[perm[i]]["ts"][3])
-                types.append(data[perm[i]]["ts"][2])
-            q_emb, q_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, types)
+            q_emb, q_len, q_nl_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys)
             new_history = []
             for q_num, one_selected in enumerate(selected_tables):
                 for _ in range(len(one_selected)):
                     new_history.append(history[q_num])
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(new_history)
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, selected_tables)
+            score = model.forward(q_emb, q_len, q_nl_len, hs_emb_var, hs_len, selected_tables)
             new_labels = []
             for b, tables in enumerate(selected_tables):
                 for table in tables:
@@ -330,11 +329,10 @@ def from_acc(model, embed_layer, data, max_batch):
         one_tab_names = datum["ts"][0]
         one_cols = datum["ts"][1]
         foreign_keys = datum["ts"][3]
-        types = datum["ts"][2]
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
-        q_emb, q_len, selected_tables = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, types)
+        q_emb, q_len, q_nl_len, selected_tables = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys)
         st = 0
         tab_st = 0
         b = len(q_emb)
@@ -348,7 +346,7 @@ def from_acc(model, embed_layer, data, max_batch):
                 ed += len(selected_tables[tab_idx])
             history = [one_history] * (ed - st)
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-            score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len, selected_tables[tab_st:tab_ed])
+            score = model.forward(q_emb[st:ed], q_len[st:ed], q_nl_len[st:ed], hs_emb_var, hs_len, selected_tables[tab_st:tab_ed])
             score = torch.tanh(score).data.cpu().numpy()
             scores.append(score)
             st = ed
