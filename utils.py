@@ -276,23 +276,9 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
                 foreign_keys.append(data[perm[i]]["ts"][3])
-            q_emb, q_len, selected_tables = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys)
-            new_history = []
-            for q_num, one_selected in enumerate(selected_tables):
-                for _ in range(len(one_selected)):
-                    new_history.append(history[q_num])
-            hs_emb_var, hs_len = embed_layer.gen_x_history_batch(new_history)
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, selected_tables)
-            new_labels = []
-            for b, tables in enumerate(selected_tables):
-                for table in tables:
-                    if str(table) not in label[b]:
-                        new_labels.append(0.)
-                    else:
-                        new_labels.append(1.)
-            label = torch.tensor(new_labels)
-            if torch.cuda.is_available():
-                label = label.cuda()
+            q_emb, q_len, label = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, label)
+
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -331,28 +317,24 @@ def from_acc(model, embed_layer, data, max_batch):
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
-        q_emb, q_len, selected_tables = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys)
+        q_emb, q_len, table_graph_list = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys)
         st = 0
         tab_st = 0
         b = len(q_emb)
         scores = []
         while st < b:
-            tab_ed = st + max_batch
-            if tab_ed >= len(selected_tables):
-                tab_ed = len(selected_tables)
-            ed = st
-            for tab_idx in range(tab_st, tab_ed):
-                ed += len(selected_tables[tab_idx])
+            ed = st + max_batch
+            if ed >= b:
+                ed = b
             history = [one_history] * (ed - st)
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-            score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len, selected_tables[tab_st:tab_ed])
-            score = torch.tanh(score).data.cpu().numpy()
+            score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len)
+            score = score.data.cpu().numpy()
             scores.append(score)
             st = ed
-            tab_st = tab_ed
         scores = np.concatenate(scores)
 
-        correct, graph_correct = model.check_eval_acc(scores, selected_tables, one_label, foreign_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
+        correct, graph_correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
         if not correct:
             total_err += 1.
         if not graph_correct:

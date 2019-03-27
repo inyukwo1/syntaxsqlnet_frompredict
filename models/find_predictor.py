@@ -125,10 +125,10 @@ class FindPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, hs_emb_var, hs_len, selected_tables):
+    def forward(self, q_emb, q_len, hs_emb_var, hs_len):
         B = len(q_len)
 
-        q_enc = self.q_bert(q_emb, q_len, selected_tables)
+        q_enc = self.q_bert(q_emb, q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         q_enc = q_enc[:, 0, :]
@@ -158,56 +158,28 @@ class FindPredictor(nn.Module):
                 err += 1
         return np.array(err)
 
-    def check_eval_acc(self, score, selected_tagbles, graph, foreign_keys, parent_tables, table_names, column_names, question):
+    def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, parent_tables, table_names, column_names, question):
         table_num_ed = len(table_names)
-        total_nums = [0] * table_num_ed
-        choose_score = [0] * table_num_ed
         print(score)
         print("~~~~~")
-        print(selected_tagbles)
+        print(table_graph_list)
         correct = False
-        graph_correct = True
 
-        cur = 0
-        for b in range(len(selected_tagbles)):
-            for idx, tab in enumerate(selected_tagbles[b]):
-                total_nums[tab] += 1
-                if score[cur] > 0.:
-                    choose_score[tab] += 1
-                cur += 1
-        tabs = []
-        vote_scores = []
-        for i in range(table_num_ed):
-            vote_score = choose_score[i] / total_nums[i]
-            vote_scores.append(vote_score)
-            if vote_score > 0.5:
-                tabs.append(i)
-        if not tabs:
-            tabs.append(np.argmax(vote_scores))
-        sorted_score_arg = np.argsort(vote_scores)
-        new_tabs = []
-        for tab in sorted_score_arg:
-            if tab in tabs:
-                new_tabs.append(tab)
-        tabs = new_tabs
-        predict_graph = graph_maker(tabs, foreign_keys, parent_tables)
-        if not graph_checker(predict_graph, graph):
-            graph_correct = False
-        if not correct:
-            print("#### " + " ".join(question))
-            for idx, table_name in enumerate(table_names):
-                print("Table {}: {}".format(idx, table_name))
-                for col_idx, [par_tab, col_name] in enumerate(column_names):
-                    if par_tab == idx:
-                        print("   {}: {}".format(col_idx, col_name))
+        selected_graph = table_graph_list[np.argmax(score)]
+        graph_correct = graph_checker(selected_graph, graph)
+        print("#### " + " ".join(question))
+        for idx, table_name in enumerate(table_names):
+            print("Table {}: {}".format(idx, table_name))
+            for col_idx, [par_tab, col_name] in enumerate(column_names):
+                if par_tab == idx:
+                    print("   {}: {}".format(col_idx, col_name))
 
-            print(vote_scores)
-            print("=======")
-            print(predict_graph)
-            print("========")
-            print(graph)
-            print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
-        return correct, graph_correct
+        print("=======")
+        print(selected_graph)
+        print("========")
+        print(graph)
+        print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
+        return False, graph_correct
 
     def score_to_tables(self, score, foreign_keys, parent_tables):
         if self.gpu:
