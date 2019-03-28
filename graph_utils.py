@@ -70,9 +70,9 @@ def generate_four_hop_path_from_seed(start_table, par_tabs, foreign_keys):
 def generate_random_graph_generate(table_num, par_tabs, foreign_keys):
     percentage = random.randint(0, 100)
     start_table = random.choice(range(table_num))
-    if percentage < 62:
+    if percentage < 33:
         return generate_one_hop_path_from_seed(start_table)
-    elif percentage < 25:
+    elif percentage < 66:
         return generate_two_hop_path_from_seed(start_table, par_tabs, foreign_keys)
     else:
         return generate_three_hop_path_from_seed(start_table, par_tabs, foreign_keys)

@@ -125,10 +125,10 @@ class FindPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, hs_emb_var, hs_len):
+    def forward(self, q_emb, q_len, hs_emb_var, hs_len, expanded_col_locs, notexpanded_col_locs):
         B = len(q_len)
 
-        q_enc = self.q_bert(q_emb, q_len)
+        q_enc = self.q_bert(q_emb, q_len, expanded_col_locs, notexpanded_col_locs)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         q_enc = q_enc[:, 0, :]
@@ -160,9 +160,11 @@ class FindPredictor(nn.Module):
 
     def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, parent_tables, table_names, column_names, question):
         table_num_ed = len(table_names)
-        print(score)
-        print("~~~~~")
-        print(table_graph_list)
+        for predicted_graph, sc in zip(table_graph_list, score):
+            print("$$$$$$$$$$$$$$$$$")
+            print(predicted_graph)
+            print("~~~~~")
+            print(sc)
         correct = False
 
         selected_graph = table_graph_list[np.argmax(score)]

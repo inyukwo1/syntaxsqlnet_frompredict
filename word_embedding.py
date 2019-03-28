@@ -83,13 +83,15 @@ class WordEmbedding(nn.Module):
 
         q_len = []
         anses = []
+        expanded_col_locs = []
+        notexpanded_col_locs = []
         for idx, one_q in enumerate(q):
             input_q = "[CLS] " + " ".join(one_q)
             parent_tables = []
             for t, c in table_cols[idx]:
                 parent_tables.append(t)
 
-            if random.randint(0, 100) < 20:
+            if random.randint(0, 100) < 30:
                 true_graph = 1.
                 generated_graph = str_graph_to_num_graph(labels[idx])
             else:
@@ -101,8 +103,12 @@ class WordEmbedding(nn.Module):
 
             input_q += " [SEP]"
             for table_num in generated_graph:
-                table_name = tables[idx][table_num]
-                input_q += " " + table_name
+                input_q += " ; " + tables[idx][table_num]
+            # table_names = [tables[idx][table_num] for table_num in generated_graph]
+            # input_q += " ".join(table_names)
+            col_name_dict = {}
+            for table_num in generated_graph:
+                col_name_dict[table_num] = []
             for col_idx, [par_tab, col_name] in enumerate(table_cols[idx]):
                 if par_tab in generated_graph:
                     if col_idx in generated_graph[par_tab]:
@@ -112,14 +118,43 @@ class WordEmbedding(nn.Module):
                                 foreign = True
                                 break
                         if not foreign:
-                            input_q += " [SEP] " + col_name
+                            col_name_dict[par_tab].append(col_name)
                     else:
-                        input_q += " [SEP] " + col_name
+                        col_name_dict[par_tab].append(col_name)
+            col_name_list = [l for k, l in col_name_dict.items()]
+            col_name_len_list = [len(l) for l in col_name_list]
+            sep_embeddings = [0]
+            for cidx in range(max(col_name_len_list)):
+                for k in generated_graph:
+                    embed_type = 1
+                    for join_key in generated_graph[k]:
+                        for f, p in foreign_keys[idx]:
+                            if join_key == p:
+                                embed_type = 2
+                                break
+                    l = col_name_dict[k]
+                    if cidx < len(l):
+                        input_q += " [SEP] " + l[cidx]
+                        sep_embeddings.append(embed_type)
 
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
             indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
             tokenized_q.append(indexed_one_q)
             q_len.append(len(indexed_one_q))
+
+            one_expanded_col_loc = []
+            one_notexpanded_col_loc = []
+            cur_sep_cnt = -1
+            for token_idx, token in enumerate(tokenozed_one_q):
+                if token == '[SEP]':
+                    cur_sep_cnt += 1
+                if cur_sep_cnt >= 0:
+                    if sep_embeddings[cur_sep_cnt] == 1:
+                        one_notexpanded_col_loc.append(token_idx)
+                    elif sep_embeddings[cur_sep_cnt] == 2:
+                        one_expanded_col_loc.append(token_idx)
+            expanded_col_locs.append(one_expanded_col_loc)
+            notexpanded_col_locs.append(one_notexpanded_col_loc)
 
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
@@ -129,11 +164,13 @@ class WordEmbedding(nn.Module):
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
             anses = anses.cuda()
-        return tokenized_q, q_len, anses
+        return tokenized_q, q_len, anses, expanded_col_locs, notexpanded_col_locs
 
     def gen_bert_for_eval(self, one_q, one_tables, one_cols, foreign_keys):
         tokenized_q = []
         parent_nums = []
+        expanded_col_locs = []
+        notexpanded_col_locs = []
         for par_tab, _ in one_cols:
             parent_nums.append(par_tab)
         table_graph_lists = []
@@ -147,8 +184,12 @@ class WordEmbedding(nn.Module):
 
             input_q += " [SEP]"
             for table_num in table_graph_lists[b]:
-                table_name = one_tables[table_num]
-                input_q += " " + table_name
+                input_q += " ; " + one_tables[table_num]
+            # table_names = [one_tables[table_num] for table_num in table_graph_lists[b]]
+            # input_q += " ".join(table_names)
+            col_name_dict = {}
+            for table_num in table_graph_lists[b]:
+                col_name_dict[table_num] = []
             for col_idx, [par_tab, col_name] in enumerate(one_cols):
                 if par_tab in table_graph_lists[b]:
                     if col_idx in table_graph_lists[b][par_tab]:
@@ -158,14 +199,43 @@ class WordEmbedding(nn.Module):
                                 foreign = True
                                 break
                         if not foreign:
-                            input_q += " [SEP] " + col_name
+                            col_name_dict[par_tab].append(col_name)
                     else:
-                        input_q += " [SEP] " + col_name
+                        col_name_dict[par_tab].append(col_name)
+            col_name_list = [l for k, l in col_name_dict.items()]
+            col_name_len_list = [len(l) for l in col_name_list]
+            sep_embeddings = [0]
+            for cidx in range(max(col_name_len_list)):
+                for k in table_graph_lists[b]:
+                    embed_type = 1
+                    for join_key in table_graph_lists[b][k]:
+                        for f, p in foreign_keys:
+                            if join_key == p:
+                                embed_type = 2
+                                break
+                    l = col_name_dict[k]
+                    if cidx < len(l):
+                        input_q += " [SEP] " + l[cidx]
+                        sep_embeddings.append(embed_type)
 
             tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
             indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
             tokenized_q.append(indexed_one_q)
             q_len.append(len(indexed_one_q))
+
+            one_expanded_col_loc = []
+            one_notexpanded_col_loc = []
+            cur_sep_cnt = -1
+            for token_idx, token in enumerate(tokenozed_one_q):
+                if token == '[SEP]':
+                    cur_sep_cnt += 1
+                if cur_sep_cnt >= 0:
+                    if sep_embeddings[cur_sep_cnt] == 1:
+                        one_notexpanded_col_loc.append(token_idx)
+                    elif sep_embeddings[cur_sep_cnt] == 2:
+                        one_expanded_col_loc.append(token_idx)
+            expanded_col_locs.append(one_expanded_col_loc)
+            notexpanded_col_locs.append(one_notexpanded_col_loc)
 
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
@@ -173,7 +243,7 @@ class WordEmbedding(nn.Module):
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, table_graph_lists
+        return tokenized_q, q_len, table_graph_lists, expanded_col_locs, notexpanded_col_locs
 
     def gen_x_history_batch(self, history):
         B = len(history)
