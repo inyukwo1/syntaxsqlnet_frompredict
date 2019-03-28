@@ -276,9 +276,9 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
                 foreign_keys.append(data[perm[i]]["ts"][3])
-            q_emb, q_len, label, expanded_col_locs, notexpanded_col_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, label)
+            q_emb, q_len, label, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, label)
 
-            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, expanded_col_locs, notexpanded_col_locs)
+            score = model.forward(q_emb, q_len, hs_emb_var, hs_len, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -317,7 +317,7 @@ def from_acc(model, embed_layer, data, max_batch):
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
-        q_emb, q_len, table_graph_list, expanded_col_locs, notexpanded_col_locs = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys)
+        q_emb, q_len, table_graph_list, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys)
         st = 0
         tab_st = 0
         b = len(q_emb)
@@ -328,7 +328,7 @@ def from_acc(model, embed_layer, data, max_batch):
                 ed = b
             history = [one_history] * (ed - st)
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-            score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len, expanded_col_locs[st:ed], notexpanded_col_locs[st:ed])
+            score = model.forward(q_emb[st:ed], q_len[st:ed], hs_emb_var, hs_len, expanded_col_locs[st:ed], notexpanded_col_locs[st:ed], expanded_tab_locs[st:ed], notexpanded_tab_locs[st:ed])
             score = score.data.cpu().numpy()
             scores.append(score)
             st = ed
