@@ -29,10 +29,10 @@ class BertContainer:
     def __init__(self):
         self.main_bert = BertModel.from_pretrained('bert-large-cased')
         self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
-        self.expand_embeding_param = nn.Parameter(torch.rand(1024) / 10)
-        self.not_expand_embeding_param = nn.Parameter(torch.rand(1024) / 10)
-        self.expand_embeding_tab_param = nn.Parameter(torch.rand(1024) / 10)
-        self.not_expand_embeding_tab_param = nn.Parameter(torch.rand(1024) / 10)
+        self.expand_embeding_param = nn.Parameter(torch.rand(1024) / 100)
+        self.not_expand_embeding_param = nn.Parameter(torch.rand(1024) / 100)
+        self.expand_embeding_tab_param = nn.Parameter(torch.rand(1024) / 100)
+        self.not_expand_embeding_tab_param = nn.Parameter(torch.rand(1024) / 100)
         if torch.cuda.is_available():
             self.main_bert.cuda()
         self.other_optimizer = torch.optim.Adam(self.my_params(), lr=H_PARAM["learning_rate"])

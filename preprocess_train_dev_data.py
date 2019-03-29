@@ -261,6 +261,7 @@ def parser_item_with_long_history(question_tokens, sql, table, history, dataset)
         table["column_names"],
         table["column_types"],
         table["foreign_keys"],
+        table["primary_keys"],
         table["db_id"]
     ]
     stack = [("root",sql)]

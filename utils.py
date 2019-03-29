@@ -170,6 +170,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
         if len(entry["ts"][0]) > 1:
             newdata.append(entry)
     data = newdata
+
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
     st = 0

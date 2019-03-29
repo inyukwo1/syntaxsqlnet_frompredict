@@ -102,8 +102,8 @@ class WordEmbedding(nn.Module):
         col_name_list = [l for k, l in col_name_dict.items()]
         col_name_len_list = [len(l) for l in col_name_list]
         sep_embeddings = [0] * len(table_graph)
-        for cidx in range(max(col_name_len_list)):
-            for k_idx, k in enumerate(table_graph):
+        for k_idx, k in enumerate(table_graph):
+            for cidx in range(max(col_name_len_list)):
                 embed_type = 1
                 for join_key in table_graph[k]:
                     for f, p in foreign_keys:
