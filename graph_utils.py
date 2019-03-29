@@ -38,6 +38,21 @@ def graph_checker(graph1, graph2, foreign_keys, primary_keys):
     return True
 
 
+def graph_checker_origin(graph1, str_graph, foreign_keys, primary_keys):
+    if len(graph1) != len(str_graph):
+        return False
+    for t in graph1:
+        if str(t) not in str_graph:
+            return False
+        t_list = graph1[t]
+        t_list.sort()
+        graph2_t_list = str_graph[str(t)]
+        graph2_t_list.sort()
+        if t_list != graph2_t_list:
+            return False
+    return True
+
+
 def str_graph_to_num_graph(graph):
     newgraph = {}
     for t in graph:
@@ -51,10 +66,17 @@ def generate_four_hop_path_from_seed(start_table, par_tabs, foreign_keys):
     yield deepcopy(table_graph)
 
     def next_neighbors(current_table_graph):
+        def col_in_graph(col):
+            for _, l in current_table_graph.items():
+                if col in l:
+                    return True
+            return False
         current_tables = list(current_table_graph.keys())
         start_table = current_tables[-1]
         one_hop_neighbors = []
         for f, p in foreign_keys:
+            # if col_in_graph(f) or col_in_graph(p):
+            #     continue
             if par_tabs[f] == start_table and par_tabs[p] not in current_table_graph:
                 one_hop_neighbors.append((start_table, f, p, par_tabs[p]))
             if par_tabs[p] == start_table and par_tabs[f] not in current_table_graph:

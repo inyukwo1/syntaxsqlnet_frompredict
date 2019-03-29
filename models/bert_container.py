@@ -38,19 +38,25 @@ class BertContainer:
         self.other_optimizer = torch.optim.Adam(self.my_params(), lr=H_PARAM["learning_rate"])
         self.main_bert_optimizer = torch.optim.Adam(self.main_bert.parameters(), lr=H_PARAM["bert_learning_rate"])
 
-    def bert(self, inp, inp_len, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs):
+    def bert(self, inp, inp_len, q_inp_len, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs):
         [batch_num, max_seq_len] = list(inp.size())
         mask = np.zeros((batch_num, max_seq_len), dtype=np.float32)
         for idx, leng in enumerate(inp_len):
             mask[idx, :leng] = np.ones(leng, dtype=np.float32)
+        [batch_num, max_seq_len] = list(inp.size())
+        emb_mask = np.ones((batch_num, max_seq_len), dtype=np.float32)
+        for idx, leng in enumerate(q_inp_len):
+            emb_mask[idx, :leng] = np.zeros(leng, dtype=np.float32)
         mask = torch.LongTensor(mask)
+        emb_mask = torch.LongTensor(emb_mask)
         if torch.cuda.is_available():
             mask = mask.cuda()
+            emb_mask = emb_mask.cuda()
 
         extended_attention_mask = mask.unsqueeze(1).unsqueeze(2)
         extended_attention_mask = extended_attention_mask.to(dtype=next(self.main_bert.parameters()).dtype)
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        embedding_output = self.main_bert.embeddings(inp)
+        embedding_output = self.main_bert.embeddings(inp, emb_mask)
 
         expand_embeddings = []
         for one_expanded_col_loc, one_notexpanded_col_loc, one_expanded_tab_loc, one_notexpanded_tab_loc in zip(expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs):
