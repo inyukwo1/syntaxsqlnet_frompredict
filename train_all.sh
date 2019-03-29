@@ -28,15 +28,15 @@ toy=""
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_trial109"
+save_dir="${data_root}/saved_models_trial110"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=3
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "trial 109 not shuffle remove 30%, same portion; add embedding low rand tensor only for sep + rand diff, encode tab too"
+echo "trial 110 new graph checker applied to trial 109"
 
 module=from
 epoch=600

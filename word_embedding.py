@@ -140,7 +140,7 @@ class WordEmbedding(nn.Module):
                     one_notexpanded_tab_loc.append(token_idx)
         return indexed_one_q, one_expanded_col_loc, one_notexpanded_col_loc, one_expanded_tab_loc, one_notexpanded_tab_loc
 
-    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys, labels):
+    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys, primary_keys, labels):
         tokenized_q = []
 
         q_len = []
@@ -160,7 +160,7 @@ class WordEmbedding(nn.Module):
             else:
                 true_graph = 0.
                 generated_graph = generate_random_graph_generate(len(tables[idx]), parent_tables, foreign_keys[idx])
-                if graph_checker(generated_graph, labels):
+                if graph_checker(generated_graph, labels[idx], foreign_keys[idx], primary_keys[idx]):
                     true_graph = 1.
             anses.append(true_graph)
 

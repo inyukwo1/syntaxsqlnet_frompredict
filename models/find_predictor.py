@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from models.net_utils import run_lstm, SIZE_CHECK
+from graph_utils import graph_checker
 
 
 def sql_graph_maker(tab_list, foreign_keys, parent_tables):
@@ -90,21 +91,6 @@ def graph_maker(tab_list, foreign_keys, parent_tables):
     return graph
 
 
-def graph_checker(graph1, graph2):
-    if len(graph1) != len(graph2):
-        return False
-    for t in graph1:
-        if str(t) not in graph2:
-            return False
-        t_list = graph1[t]
-        t_list.sort()
-        graph2_t_list = graph2[str(t)]
-        graph2_t_list.sort()
-        if t_list != graph2_t_list:
-            return False
-    return True
-
-
 class FindPredictor(nn.Module):
     def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert):
         super(FindPredictor, self).__init__()
@@ -158,7 +144,7 @@ class FindPredictor(nn.Module):
                 err += 1
         return np.array(err)
 
-    def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, parent_tables, table_names, column_names, question):
+    def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, primary_keys, parent_tables, table_names, column_names, question):
         table_num_ed = len(table_names)
         for predicted_graph, sc in zip(table_graph_list, score):
             print("$$$$$$$$$$$$$$$$$")
@@ -168,7 +154,7 @@ class FindPredictor(nn.Module):
         correct = False
 
         selected_graph = table_graph_list[np.argmax(score)]
-        graph_correct = graph_checker(selected_graph, graph)
+        graph_correct = graph_checker(selected_graph, graph, foreign_keys, primary_keys)
         print("#### " + " ".join(question))
         for idx, table_name in enumerate(table_names):
             print("Table {}: {}".format(idx, table_name))

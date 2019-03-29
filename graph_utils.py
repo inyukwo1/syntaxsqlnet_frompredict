@@ -3,18 +3,38 @@ from copy import deepcopy
 from collections import OrderedDict
 
 
-def graph_checker(graph1, str_graph):
-    if len(graph1) != len(str_graph):
-        return False
+def graph_checker(graph1, graph2, foreign_keys, primary_keys):
+    for t in graph2:
+        if int(t) not in graph1:
+            return False
+    ok_cols = []
     for t in graph1:
-        if str(t) not in str_graph:
-            return False
+        if str(t) not in graph2:
+            for col in graph1[t]:
+                if col not in primary_keys:
+                    return False
+            ok_cols += graph1[t]
+            continue
+    for t in graph1:
+        if str(t) not in graph2:
+            continue
         t_list = graph1[t]
-        t_list.sort()
-        graph2_t_list = str_graph[str(t)]
-        graph2_t_list.sort()
-        if t_list != graph2_t_list:
-            return False
+        graph2_t_list = graph2[str(t)]
+        for col in graph2_t_list:
+            if col not in t_list:
+                return False
+        for col in t_list:
+            if col not in graph2_t_list:
+                ok = False
+                for f, p in foreign_keys:
+                    if f == col and p in ok_cols:
+                        ok = True
+                        break
+                    if p == col and f in ok_cols:
+                        ok = True
+                        break
+                if not ok:
+                    return False
     return True
 
 

@@ -101,7 +101,7 @@ def prepare_tables(data, table_type):
         for f, p in foreign_keys:
             assert f < len(cols_add[1:])
             assert p < len(cols_add[1:])
-        prepared[ts[4]] = (cols_add[1:], tname_toks, tab_seq[1:], foreign_keys)
+        prepared[ts[5]] = (cols_add[1:], tname_toks, tab_seq[1:], foreign_keys)
     return prepared
 
 
@@ -273,11 +273,13 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
             tabs = []
             cols = []
             foreign_keys = []
+            primary_keys = []
             for i in range(st, ed):
                 tabs.append(data[perm[i]]['ts'][0])
                 cols.append(data[perm[i]]["ts"][1])
                 foreign_keys.append(data[perm[i]]["ts"][3])
-            q_emb, q_len, label, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, label)
+                primary_keys.append(data[perm[i]]["ts"][4])
+            q_emb, q_len, label, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
 
             score = model.forward(q_emb, q_len, hs_emb_var, hs_len, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs)
         loss = model.loss(score, label)
@@ -315,6 +317,7 @@ def from_acc(model, embed_layer, data, max_batch):
         one_tab_names = datum["ts"][0]
         one_cols = datum["ts"][1]
         foreign_keys = datum["ts"][3]
+        primary_keys = datum["ts"][4]
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
@@ -335,7 +338,7 @@ def from_acc(model, embed_layer, data, max_batch):
             st = ed
         scores = np.concatenate(scores)
 
-        correct, graph_correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
+        correct, graph_correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, primary_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
         if not correct:
             total_err += 1.
         if not graph_correct:
