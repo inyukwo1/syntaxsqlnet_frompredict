@@ -91,18 +91,38 @@ def graph_maker(tab_list, foreign_keys, parent_tables):
     return graph
 
 
-def graph_checker(graph1, graph2):
-    if len(graph1) != len(graph2):
-        return False
+def graph_checker(graph1, graph2, foreign_keys, primary_keys):
+    for t in graph2:
+        if int(t) not in graph1:
+            return False
+    ok_cols = []
     for t in graph1:
         if str(t) not in graph2:
-            return False
+            for col in graph1[t]:
+                if col not in primary_keys:
+                    return False
+            ok_cols += graph1[t]
+            continue
+    for t in graph1:
+        if str(t) not in graph2:
+            continue
         t_list = graph1[t]
-        t_list.sort()
         graph2_t_list = graph2[str(t)]
-        graph2_t_list.sort()
-        if t_list != graph2_t_list:
-            return False
+        for col in graph2_t_list:
+            if col not in t_list:
+                return False
+        for col in t_list:
+            if col not in graph2_t_list:
+                ok = False
+                for f, p in foreign_keys:
+                    if f == col and p in ok_cols:
+                        ok = True
+                        break
+                    if p == col and f in ok_cols:
+                        ok = True
+                        break
+                if not ok:
+                    return False
     return True
 
 
@@ -175,7 +195,7 @@ class FindPredictor(nn.Module):
                 err += 1
         return np.array(err)
 
-    def check_eval_acc(self, score, graph, foreign_keys, parent_tables, table_names, column_names, question):
+    def check_eval_acc(self, score, graph, foreign_keys, primary_keys, parent_tables, table_names, column_names, question):
         if self.gpu:
             score = F.tanh(score).data.cpu().numpy()
         else:
@@ -201,7 +221,7 @@ class FindPredictor(nn.Module):
                 new_tabs.append(tab)
         tabs = new_tabs
         predict_graph = graph_maker(tabs, foreign_keys, parent_tables)
-        if not graph_checker(predict_graph, graph):
+        if not graph_checker(predict_graph, graph, foreign_keys, primary_keys):
             graph_correct = False
         if not correct:
             print("#### " + " ".join(question))
@@ -213,6 +233,9 @@ class FindPredictor(nn.Module):
 
             print(score)
             print("=======")
+            print(foreign_keys)
+            print(primary_keys)
+            print("==========")
             print(predict_graph)
             print("========")
             print(graph)

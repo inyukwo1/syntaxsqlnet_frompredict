@@ -327,10 +327,11 @@ def from_acc(model, embed_layer, data):
         score = model.forward(q_emb, q_len, hs_emb_var, hs_len)
 
         foreign_keys = datum["ts"][3]
+        primary_keys = datum["ts"][4]
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
-        correct, graph_correct = model.check_eval_acc(score, one_label, foreign_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
+        correct, graph_correct = model.check_eval_acc(score, one_label, foreign_keys, primary_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
         if not correct:
             total_err += 1.
         if not graph_correct:

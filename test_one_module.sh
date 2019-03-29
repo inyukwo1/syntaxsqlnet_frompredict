@@ -32,7 +32,7 @@ load_path="${data_root}/saved_models_trial44/"
 log_dir=${save_dir}/train_log
 
 
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=0
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
 module=from
 epoch=600
