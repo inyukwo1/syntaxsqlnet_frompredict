@@ -95,6 +95,17 @@ class WordEmbedding(nn.Module):
                         for f, p in foreign_keys:
                             if parent_tables[f] in table_graph and p == col_idx:
                                 _, col_name = table_cols[f]
+                    #             break
+                    # foreign = False
+                    # for f, p in foreign_keys:
+                    #     if col_idx == f and p in primary_keys and parent_tables[p] in table_graph:
+                    #         foreign = True
+                    #         break
+                    #     if col_idx == p and f in primary_keys and parent_tables[f] in table_graph:
+                    #         foreign = True
+                    #         break
+                    # if foreign:
+                    #     continue
                     col_name_dict[par_tab].append(col_name)
                 else:
                     col_name_dict[par_tab].append(col_name)
@@ -153,7 +164,7 @@ class WordEmbedding(nn.Module):
             for t, c in table_cols[idx]:
                 parent_tables.append(t)
 
-            if random.randint(0, 100) < 11:
+            if random.randint(0, 100) < 7:
                 true_graph = 1.
                 generated_graph = str_graph_to_num_graph(labels[idx])
             else:
