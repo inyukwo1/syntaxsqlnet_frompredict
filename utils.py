@@ -338,11 +338,9 @@ def from_acc(model, embed_layer, data, max_batch):
             st = ed
         scores = np.concatenate(scores)
 
-        correct, graph_correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, primary_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
+        correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, primary_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
         if not correct:
             total_err += 1.
-        if not graph_correct:
-            graph_err += 1.
 
     print(("Dev FROM acc total acc: {} graph acc: {}".format(1 - total_err * 1.0 / len(data), 1 - graph_err * 1.0 / len(data))), flush=True)
     return 1 - total_err * 1.0 / len(data)

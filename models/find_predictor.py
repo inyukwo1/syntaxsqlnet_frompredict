@@ -167,7 +167,7 @@ class FindPredictor(nn.Module):
         print("========")
         print(graph)
         print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
-        return False, graph_correct
+        return graph_correct
 
     def score_to_tables(self, score, foreign_keys, parent_tables):
         if self.gpu:

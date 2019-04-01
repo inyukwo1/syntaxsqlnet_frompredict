@@ -25,17 +25,23 @@ def list_tensor_tensify(list_tensor):
     return list_tensor
 
 
-class BertContainer:
+class BertParameterWrapper(nn.Module):
     def __init__(self):
-        self.main_bert = BertModel.from_pretrained('bert-large-cased')
-        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
+        super(BertParameterWrapper, self).__init__()
         self.expand_embeding_param = nn.Parameter(torch.rand(1024) / 100)
         self.not_expand_embeding_param = nn.Parameter(torch.rand(1024) / 100)
         self.expand_embeding_tab_param = nn.Parameter(torch.rand(1024) / 100)
         self.not_expand_embeding_tab_param = nn.Parameter(torch.rand(1024) / 100)
+
+
+class BertContainer:
+    def __init__(self):
+        self.main_bert = BertModel.from_pretrained('bert-large-cased')
+        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-large-cased')
+        self.bert_param = BertParameterWrapper()
         if torch.cuda.is_available():
             self.main_bert.cuda()
-        self.other_optimizer = torch.optim.Adam(self.my_params(), lr=H_PARAM["learning_rate"])
+        self.other_optimizer = torch.optim.Adam(self.bert_param.parameters(), lr=H_PARAM["learning_rate"])
         self.main_bert_optimizer = torch.optim.Adam(self.main_bert.parameters(), lr=H_PARAM["bert_learning_rate"])
 
     def bert(self, inp, inp_len, q_inp_len, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs):
@@ -63,15 +69,15 @@ class BertContainer:
             embed_tensors = []
             for loc_idx in range(max_seq_len):
                 if loc_idx in one_notexpanded_col_loc:
-                    embed_tensor = self.not_expand_embeding_param
+                    embed_tensor = self.bert_param.not_expand_embeding_param
                 elif loc_idx in one_expanded_col_loc:
-                    embed_tensor = self.expand_embeding_param
+                    embed_tensor = self.bert_param.expand_embeding_param
                 elif loc_idx in one_expanded_tab_loc:
-                    embed_tensor = self.expand_embeding_tab_param
+                    embed_tensor = self.bert_param.expand_embeding_tab_param
                 elif loc_idx in one_notexpanded_tab_loc:
-                    embed_tensor = self.not_expand_embeding_tab_param
+                    embed_tensor = self.bert_param.not_expand_embeding_tab_param
                 else:
-                    embed_tensor = torch.zeros_like(self.expand_embeding_param)
+                    embed_tensor = torch.zeros_like(self.bert_param.expand_embeding_param)
                 embed_tensors.append(embed_tensor)
             embed_tensors = torch.stack(embed_tensors)
             expand_embeddings.append(embed_tensors)
@@ -91,12 +97,6 @@ class BertContainer:
 
     def eval(self):
         self.main_bert.eval()
-
-    def my_params(self):
-        yield self.expand_embeding_param
-        yield self.not_expand_embeding_param
-        yield self.expand_embeding_tab_param
-        yield self.not_expand_embeding_tab_param
 
     def zero_grad(self):
         self.main_bert_optimizer.zero_grad()

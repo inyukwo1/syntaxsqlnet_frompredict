@@ -137,5 +137,6 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), args.save_dir+"/{}_models.dump".format(args.train_component))
             if BERT:
                 print("Save bert")
-                torch.save(bert_model.state_dict(), args.save_dir+"/bert_{}_models.dump".format(args.train_component))
+                torch.save(bert_model.main_bert.state_dict(), args.save_dir+"/bert_{}_models.dump".format(args.train_component))
+                torch.save(bert_model.bert_param.state_dict(), args.save_dir+"/bert_{}_params.dump".format(args.train_component))
 

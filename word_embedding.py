@@ -98,10 +98,10 @@ class WordEmbedding(nn.Module):
                     #             break
                     # foreign = False
                     # for f, p in foreign_keys:
-                    #     if col_idx == f and p in primary_keys and parent_tables[p] in table_graph:
+                    #     if col_idx == f and p in primary_keys and parent_tables[p] in table_graph and p in table_graph[parent_tables[p]]:
                     #         foreign = True
                     #         break
-                    #     if col_idx == p and f in primary_keys and parent_tables[f] in table_graph:
+                    #     if col_idx == p and f in primary_keys and parent_tables[f] in table_graph and f in table_graph[parent_tables[f]]:
                     #         foreign = True
                     #         break
                     # if foreign:
