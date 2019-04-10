@@ -85,18 +85,18 @@ def generate_four_hop_path_from_seed(start_table, par_tabs, foreign_keys):
 
     one_neighbors = next_neighbors(current_table_graph=table_graph)
     for start_table, f, p, tab in one_neighbors:
-        table_graph[start_table].append(f)
-        table_graph[tab] = [p]
+        table_graph[start_table].append((f, p, tab))
+        table_graph[tab] = [(p, f, start_table)]
         yield deepcopy(table_graph)
         two_neighbors = next_neighbors(table_graph)
         for start_table2, f2, p2, tab2 in two_neighbors:
-            table_graph[start_table2].append(f2)
-            table_graph[tab2] = [p2]
+            table_graph[start_table2].append((f2, p2, tab2))
+            table_graph[tab2] = [(p2, f2, start_table2)]
             yield deepcopy(table_graph)
             three_neighbors = next_neighbors(table_graph)
             for start_table3, f3, p3, tab3 in three_neighbors:
-                table_graph[start_table3].append(f3)
-                table_graph[tab3] = [p3]
+                table_graph[start_table3].append((f3, p3, tab3))
+                table_graph[tab3] = [(p3, f3, start_table3)]
                 yield deepcopy(table_graph)
                 table_graph.pop(tab3)
                 table_graph[start_table3].pop()

@@ -321,7 +321,7 @@ def from_acc(model, embed_layer, data, max_batch):
         parent_tables = []
         for par_tab, _ in datum["ts"][1]:
             parent_tables.append(par_tab)
-        q_emb, q_len, q_q_len, table_graph_list, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+        q_emb, q_len, q_q_len, table_graph_list, full_graph_list, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
         st = 0
         tab_st = 0
         b = len(q_emb)

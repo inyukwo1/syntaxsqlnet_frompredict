@@ -5,6 +5,7 @@ import argparse
 import numpy as np
 from utils import *
 from models.net_utils import encode_question
+from models.bert_container import BertContainer
 from supermodel import SuperModel
 from pytorch_pretrained_bert import BertModel
 
@@ -44,17 +45,9 @@ if __name__ == '__main__':
     word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), \
             load_used=args.train_emb, use_small=USE_SMALL)
 
-    bert_model = BertModel.from_pretrained('bert-large-cased')
-    if GPU:
-        bert_model.cuda()
+    bert_model = BertContainer()
 
-
-    def berter(q, q_len):
-        return encode_question(bert_model, q, q_len)
-
-    bert = berter
-
-    model = SuperModel(word_emb, N_word=N_word, gpu=GPU, trainable_emb = args.train_emb, table_type=args.table_type, use_hs=use_hs, bert=bert, with_from=args.with_from)
+    model = SuperModel(word_emb, N_word=N_word, gpu=GPU, trainable_emb = args.train_emb, table_type=args.table_type, use_hs=use_hs, bert=bert_model.bert, with_from=args.with_from)
 
     # agg_m, sel_m, cond_m = best_model_name(args)
     # torch.save(model.state_dict(), "saved_models/{}_models.dump".format(args.train_component))
@@ -74,7 +67,8 @@ if __name__ == '__main__':
     model.having.load_state_dict(torch.load("{}/having_models.dump".format(args.models), map_location=device))
     if args.with_from:
         model.from_table.load_state_dict(torch.load("{}/from_models.dump".format(args.models), map_location=device))
-        bert_model.load_state_dict(torch.load("{}/bert_from_models.dump".format(args.models), map_location=device))
+        bert_model.main_bert.load_state_dict(torch.load("{}/bert_from_models.dump".format(args.models), map_location=device))
+        bert_model.bert_param.load_state_dict(torch.load("{}/bert_from_params.dump".format(args.models), map_location=device))
         bert_model.eval()
 
     test_acc(model, BATCH_SIZE, data, args.output_path)

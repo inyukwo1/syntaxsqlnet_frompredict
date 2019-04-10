@@ -115,31 +115,31 @@ class SuperModel(nn.Module):
         self.embed_layer = WordEmbedding(word_emb, N_word, gpu, self.SQL_TOK, use_bert , trainable=trainable_emb)
 
         # initial all modules
-        self.multi_sql = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.multi_sql = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.multi_sql.eval()
 
-        self.key_word = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.key_word = KeyWordPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.key_word.eval()
 
-        self.col = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.col = ColPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.col.eval()
 
-        self.op = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.op = OpPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.op.eval()
 
-        self.agg = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.agg = AggPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.agg.eval()
 
-        self.root_teminal = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.root_teminal = RootTeminalPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.root_teminal.eval()
 
-        self.des_asc = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.des_asc = DesAscLimitPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.des_asc.eval()
 
-        self.having = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs, bert=None)
+        self.having = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth,gpu=gpu, use_hs=use_hs)
         self.having.eval()
 
-        self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=None)
+        self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs)
         self.andor.eval()
 
         self.from_table = FindPredictor(N_word=N_word, N_h=200, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
@@ -254,15 +254,31 @@ class SuperModel(nn.Module):
 
                     one_tab_names = tables["table_names"]
                     table_num = len(one_tab_names)
-                    new_hs_emb_var = [one_hs_emb_var] * table_num
-                    new_hs_emb_var = torch.stack(new_hs_emb_var)
-                    new_hs_len = np.array([one_hs_len] * table_num, dtype=np.int64)
                     one_cols = tables["column_names"]
                     parent_nums = [idx for idx, _ in one_cols]
-                    new_q_emb, new_q_len = self.embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols)
-                    from_score = self.from_table.forward(new_q_emb, new_q_len, new_hs_emb_var, new_hs_len)
-                    from_tables, from_graph = self.from_table.score_to_tables(from_score, tables["foreign_keys"], parent_nums)
+                    foreign_keys = tables["foreign_keys"]
+                    primary_keys = tables["primary_keys"]
+                    new_q_emb, new_q_len, new_q_q_len, table_graph_list, full_graph_list, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = self.embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+
+                    st = 0
+                    b = len(new_q_emb)
+                    scores = []
+                    while st < b:
+                        ed = st + 3
+                        if ed >= b:
+                            ed = b
+                        new_hs_emb_var = [one_hs_emb_var] * (ed - st)
+                        new_hs_emb_var = torch.stack(new_hs_emb_var)
+                        new_hs_len = np.array([one_hs_len] * (ed - st), dtype=np.int64)
+                        new_score = self.from_table.forward(new_q_emb[st:ed], new_q_len[st:ed], new_q_q_len[st:ed], new_hs_emb_var, new_hs_len, expanded_col_locs[st:ed], notexpanded_col_locs[st:ed], expanded_tab_locs[st:ed], notexpanded_tab_locs[st:ed])
+                        new_score = new_score.data.cpu().numpy()
+                        scores.append(new_score)
+                        st = ed
+                    scores = np.concatenate(scores)
+                    from_graph = full_graph_list[np.argmax(scores)]
                     current_sql["from"] = from_graph
+                    from_tables = list(from_graph.keys())
+                    timeout = time.time() + 2
                 else:
                     from_tables = None
                 score = self.key_word.forward(q_emb_var,q_len,hs_emb_var,hs_len,kw_emb_var,kw_len)

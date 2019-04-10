@@ -229,7 +229,16 @@ class WordEmbedding(nn.Module):
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, q_q_len, table_graph_lists, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs
+        simple_graph_lists = []
+        for graph in table_graph_lists:
+            new_graph = deepcopy(graph)
+            for k in new_graph:
+                if new_graph[k]:
+                    new_graph[k] = new_graph[k][0]
+                else:
+                    new_graph[k] = []
+            simple_graph_lists.append(new_graph)
+        return tokenized_q, q_len, q_q_len, simple_graph_lists, table_graph_lists, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs
 
     def gen_x_history_batch(self, history):
         B = len(history)

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=0
 TEST_DATA=data/dev.json
 
 # # full + aug
@@ -11,7 +11,6 @@ python test.py \
     --output_path     ${SAVE_PATH}/dev_result.txt \
     --history_type    full \
     --table_type      std \
-    --with_from
 
 
 ## - aug
