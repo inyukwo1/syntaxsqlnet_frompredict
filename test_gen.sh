@@ -1,16 +1,17 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 TEST_DATA=data/dev.json
 
 # # full + aug
-SAVE_PATH=generated_datasets/generated_data_augment_from/saved_models
+SAVE_PATH=generated_datasets/generated_data_augment_from/saved_models_col_extract
 python test.py \
     --test_data_path  ${TEST_DATA} \
     --models          ${SAVE_PATH} \
     --output_path     ${SAVE_PATH}/dev_result.txt \
     --history_type    full \
     --table_type      std \
+    --with_from
 
 
 ## - aug

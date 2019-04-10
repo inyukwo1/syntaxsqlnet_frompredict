@@ -19,6 +19,7 @@ from models.find_predictor import FindPredictor
 from pytorch_pretrained_bert import BertModel
 from hyperparameters import H_PARAM
 import time
+from models.bert_container import BertContainer
 
 TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
 SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
@@ -65,20 +66,7 @@ if __name__ == '__main__':
     word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), load_used=False, use_small=USE_SMALL)
     print("finished load word embedding: {}".format(time.time() - start_time))
     model = None
-    if BERT:
-        bert_model = BertModel.from_pretrained('bert-large-cased')
-        if GPU:
-            bert_model.cuda()
-
-
-        def berter(q, q_len):
-            return encode_question(bert_model, q, q_len)
-
-
-        bert = berter
-    else:
-        bert_model = None
-        bert = None
+    bert_model = BertContainer()
     if args.train_component == "multi_sql":
         model = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "keyword":
@@ -98,16 +86,23 @@ if __name__ == '__main__':
     elif args.train_component == "andor":
         model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
     elif args.train_component == "from":
-        model = FindPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert)
+        model = FindPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert_model.bert)
     print("finished build model")
 
     print_flag = False
     model.load_state_dict(torch.load(args.load_path + "/{}_models.dump".format(args.train_component)))
+
+    if GPU:
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
     if BERT:
-        bert_model.load_state_dict(torch.load(args.load_path + "/bert_{}_models.dump".format(args.train_component)))
+        bert_model.main_bert.load_state_dict(torch.load("{}/bert_from_models.dump".format(args.load_path), map_location=device))
+        bert_model.bert_param.load_state_dict(torch.load("{}/bert_from_params.dump".format(args.load_path), map_location=device))
+        bert_model.eval()
     embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=BERT, trainable=False)
     if args.train_component == "from":
-        acc = from_acc(model, embed_layer, dev_data)
+        acc = from_acc(model, embed_layer, dev_data, 1)
     else:
         acc = epoch_acc(model, BATCH_SIZE, args.train_component, embed_layer, dev_data, table_type=args.table_type)
     print("finished: {}".format(time.time() - start_time))

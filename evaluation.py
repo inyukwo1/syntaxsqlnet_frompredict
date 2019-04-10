@@ -535,6 +535,8 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
     compound_correct = 0
     compound_detect = 0
     for q_idx, (p, g) in enumerate(zip(plist, glist)):
+        if q_idx <= 229:
+            continue
         p_str = p[0]
         g_str, db = g
         db_name = db
@@ -579,10 +581,10 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
         p_sql = rebuild_sql_val(p_sql)
         p_sql = rebuild_sql_col(p_valid_col_units, p_sql, kmap)
 
-        if etype in ["all", "exec"]:
-            exec_score = eval_exec_match(db, p_str, g_str, p_sql, g_sql)
-            if exec_score:
-                scores[hardness]['exec'] += 1
+        # if etype in ["all", "exec"]:
+        #     exec_score = eval_exec_match(db, p_str, g_str, p_sql, g_sql)
+        #     if exec_score:
+        #         scores[hardness]['exec'] += 1
 
         if etype in ["all", "match"]:
             exact_score = evaluator.eval_exact_match(p_sql, g_sql)

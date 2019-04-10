@@ -566,6 +566,7 @@ class SuperModel(nn.Module):
         # print("could not find path!!!!!{}".format(self.path_not_found))
         self.path_not_found += 1
         # return []
+
     def gen_from(self,candidate_tables,table):
         def find(d,col):
             if d[col] == -1:

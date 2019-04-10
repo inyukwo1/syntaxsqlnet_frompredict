@@ -1,6 +1,7 @@
 import random
 from copy import deepcopy
 from collections import OrderedDict
+from hyperparameters import H_PARAM
 
 
 def graph_checker(graph1, graph2, foreign_keys, primary_keys):
@@ -170,3 +171,45 @@ def generate_one_hop_path_from_seed(start_table):
     table_graph = OrderedDict()
     table_graph[start_table] = []
     return table_graph
+
+
+def make_compound_table(table_dict, my_db_id, db_ids):
+    if H_PARAM["dev_db_compound_num"] == 0:
+        return table_dict[my_db_id]
+    selected_db_ids = random.sample(db_ids, H_PARAM["dev_db_compound_num"])
+    if my_db_id in selected_db_ids:
+        selected_db_ids.remove(my_db_id)
+
+    compound_table = deepcopy(table_dict[my_db_id])
+    for dev_db_id in selected_db_ids:
+        if random.randint(0, 10) < 5:
+            new_table = table_dict[dev_db_id]
+        else:
+            new_table = compound_table
+            compound_table = deepcopy(table_dict[dev_db_id])
+        compound_table = append_table(compound_table, new_table)
+    return compound_table
+
+
+def append_table(compound_table, new_table):
+    for table_name in new_table["table_names"]:
+        if table_name in compound_table["table_names"]:
+            return compound_table
+    new_table_offset = len(compound_table["table_names"])
+    new_column_offset = len(compound_table["column_names"]) - 1
+    compound_table["table_names"].extend(new_table["table_names"])
+    compound_table["table_names_original"].extend(new_table["table_names_original"])
+    for p in new_table["primary_keys"]:
+        compound_table["primary_keys"].append(p + new_column_offset)
+    for f, p in new_table["foreign_keys"]:
+        compound_table["foreign_keys"].append([f + new_column_offset, p + new_column_offset])
+    compound_table["primary_keys"].extend(new_table["primary_keys"])
+    compound_table["column_types"].extend(new_table["column_types"])
+    for t, name in new_table["column_names_original"][1:]:
+        compound_table["column_names_original"].append([t + new_table_offset, name])
+    for t, name in new_table["column_names"][1:]:
+        compound_table["column_names"].append([t + new_table_offset, name])
+    return compound_table
+
+
+

@@ -11,7 +11,9 @@ import pandas as pd
 import copy
 import os.path
 import pickle
-import torch
+from hyperparameters import H_PARAM
+from graph_utils import make_compound_table
+import time
 
 
 def load_train_dev_dataset(component,train_dev,history, root):
@@ -483,26 +485,36 @@ def timeout_handler(num, stack):
     print("Received SIGALRM")
     raise Exception("Timeout")
 
-## used in test.py
-def test_acc(model, batch_size, data,output_path):
+
+# used in test.py
+def test_acc(model, batch_size, data, output_path):
     table_dict = get_table_dict("./data/tables.json")
     f = open(output_path,"w")
+    dev_db_ids = []
+    for idx, item in enumerate(data[:]):
+        dev_db_ids.append(item["db_id"])
+
+    table_num_sum = 0
+    start_time = time.time()
     for idx, item in enumerate(data[:]):
         print("processing {}".format(idx), flush=True)
         db_id = item["db_id"]
-        if db_id not in table_dict: print(("Error %s not in table_dict" % db_id))
-        # signal.signal(signal.SIGALRM, timeout_handler)
-        # signal.alarm(2) # set timer to prevent infinite recursion in SQL generation
-        sql = model.forward([item["question_toks"]]*batch_size,[],table_dict[db_id])
+        if db_id not in table_dict:
+            print(("Error %s not in table_dict" % db_id))
+        tables = make_compound_table(table_dict, db_id, dev_db_ids)
+        table_num_sum += len(tables["table_names"])
+        sql = model.forward([item["question_toks"]]*batch_size,[], tables)
         if sql is not None:
             print(sql)
-            sql = model.gen_sql(sql,table_dict[db_id])
+            sql = model.gen_sql(sql, tables)
         else:
             sql = "select a from b"
         print(sql)
         print("")
         f.write("{}\n".format(sql))
     f.close()
+    print("table_nums: {}".format(table_num_sum / len(data)))
+    print("elapsed time: {}".format(time.time() - start_time))
 
 
 def load_word_emb(file_name, load_used=False, use_small=False):

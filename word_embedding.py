@@ -233,10 +233,8 @@ class WordEmbedding(nn.Module):
         for graph in table_graph_lists:
             new_graph = deepcopy(graph)
             for k in new_graph:
-                if new_graph[k]:
-                    new_graph[k] = new_graph[k][0]
-                else:
-                    new_graph[k] = []
+                for idx, l in enumerate(new_graph[k]):
+                    new_graph[k][idx] = l[0]
             simple_graph_lists.append(new_graph)
         return tokenized_q, q_len, q_q_len, simple_graph_lists, table_graph_lists, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs
 

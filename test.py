@@ -20,12 +20,15 @@ if __name__ == '__main__':
     parser.add_argument('--output_path', type=str)
     parser.add_argument('--history_type', type=str, default='full', choices=['full','part','no'], help='full, part, or no history')
     parser.add_argument('--table_type', type=str, default='std', choices=['std','hier','no'], help='standard, hierarchical, or no table info')
+    parser.add_argument('--schema_compound', type=int, default=0)
     parser.add_argument('--with_from', action='store_true')
     args = parser.parse_args()
     use_hs = True
     if args.history_type == "no":
         args.history_type = "full"
         use_hs = False
+    if args.schema_compound != 0:
+        H_PARAM["dev_db_compound_num"] = args.schema_compound
 
     N_word=300
     B_word=42
