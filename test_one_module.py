@@ -89,13 +89,13 @@ if __name__ == '__main__':
         model = FindPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert_model.bert)
     print("finished build model")
 
-    print_flag = False
-    model.load_state_dict(torch.load(args.load_path + "/{}_models.dump".format(args.train_component)))
-
     if GPU:
         device = torch.device('cuda')
     else:
         device = torch.device('cpu')
+    print_flag = False
+    model.load_state_dict(torch.load(args.load_path + "/{}_models.dump".format(args.train_component), map_location=device))
+
     if BERT:
         bert_model.main_bert.load_state_dict(torch.load("{}/bert_from_models.dump".format(args.load_path), map_location=device))
         bert_model.bert_param.load_state_dict(torch.load("{}/bert_from_params.dump".format(args.load_path), map_location=device))

@@ -8,5 +8,5 @@ H_PARAM = {
     "N_H": 300,
     "FROM_N_H": 200,
     "N_DEPTH": 2,
-    "dev_db_compound_num": 0
+    "dev_db_compound_num": 4
     }

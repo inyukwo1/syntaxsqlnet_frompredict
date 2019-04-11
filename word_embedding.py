@@ -106,27 +106,20 @@ class WordEmbedding(nn.Module):
                     #         break
                     # if foreign:
                     #     continue
-                    col_name_dict[par_tab].append(col_name)
+                    col_name_dict[par_tab].append((col_idx, col_name))
                 else:
-                    col_name_dict[par_tab].append(col_name)
+                    col_name_dict[par_tab].append((col_idx, col_name))
         col_name_list = [l for k, l in col_name_dict.items()]
         col_name_len_list = [len(l) for l in col_name_list]
-        sep_embeddings = [0] * len(table_graph)
+        sep_embeddings = [3] * len(table_graph)
         for k_idx, k in enumerate(table_graph):
-            for cidx in range(max(col_name_len_list)):
+            l = col_name_dict[k]
+            for col_num, col_name in l:
                 embed_type = 1
-                for join_key in table_graph[k]:
-                    if join_key in primary_keys:
-                        embed_type = 2
-                        break
-                if embed_type == 1:
-                    sep_embeddings[k_idx] = 3
-                else:
-                    sep_embeddings[k_idx] = 4
-                l = col_name_dict[k]
-                if cidx < len(l):
-                    input_q += " [SEP] " + l[cidx]
-                    sep_embeddings.append(embed_type)
+                if col_num in table_graph[k]:
+                    embed_type = 2
+                input_q += " [SEP] " + col_name
+                sep_embeddings.append(embed_type)
 
         tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
         indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
@@ -265,7 +258,7 @@ class WordEmbedding(nn.Module):
                     elif item == "asc":
                         item = "ascending"
                     elif item == "desc":
-                        item == "descending"
+                        item = "descending"
                     if item in (
                     "none", "select", "from", "where", "having", "limit", "intersect", "except", "union", 'not',
                     'between', '=', '>', '<', 'in', 'like', 'is', 'exists', 'root', 'ascending', 'descending'):
