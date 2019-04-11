@@ -31,7 +31,7 @@ data_root=generated_datasets/generated_data${d_type}
 load_path="${data_root}/saved_models_trial130/"
 
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
 module=from
 epoch=600

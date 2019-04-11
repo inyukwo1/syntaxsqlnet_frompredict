@@ -56,7 +56,7 @@ HARDNESS = {
     "component2": ('except', 'union', 'intersect')
 }
 
-
+table_primary = {}
 def condition_has_or(conds):
     return 'or' in conds[1::2]
 
@@ -139,19 +139,41 @@ def eval_from(pred, label):
     pred_total = len(pred_table_units) + len(pred_conds)
 
     cnt = 0
-    for unit in pred_table_units:
-        if unit in label_table_units:
-            cnt += 1
-            label_table_units.remove(unit)
-    for unit in pred_conds:
+    for unit in label_table_units:
+        if unit not in pred_table_units:
+            return 2, 1, 0 # TODO
+        else:
+            pred_table_units.remove(unit)
+    for unit in label_conds:
         sameunit = (unit[0], unit[1], (0, unit[3], None), unit[2][1], unit[4])
-        if unit in label_conds:
-            cnt += 1
-            label_conds.remove(unit)
-        elif sameunit in label_conds:
-            cnt += 1
-            label_conds.remove(sameunit)
-    return label_total, pred_total, cnt
+        if unit in pred_conds:
+            pred_conds.remove(unit)
+        elif sameunit in pred_conds:
+            pred_conds.remove(sameunit)
+        else:
+            return 2, 1, 0
+    for unit in pred_table_units:
+        for cond_unit in pred_conds:
+            if cond_unit[2][1][1] in table_primary[unit[1]] or cond_unit[3][1] in table_primary[unit[1]]:
+                pred_table_units.remove(unit)
+                pred_conds.remove(cond_unit)
+    if pred_table_units or pred_conds:
+        return 2, 1, 0 # TODO
+    return 2, 2, 2
+
+    # for unit in pred_table_units:
+    #     if unit in label_table_units:
+    #         cnt += 1
+    #         label_table_units.remove(unit)
+    # for unit in pred_conds:
+    #     sameunit = (unit[0], unit[1], (0, unit[3], None), unit[2][1], unit[4])
+    #     if unit in label_conds:
+    #         cnt += 1
+    #         label_conds.remove(unit)
+    #     elif sameunit in label_conds:
+    #         cnt += 1
+    #         label_conds.remove(sameunit)
+    # return label_total, pred_total, cnt
 
 
 def eval_where(pred, label):
@@ -407,7 +429,7 @@ class Evaluator:
         self.partial_scores = partial_scores
 
         for _, score in list(partial_scores.items()):
-            if score['f1'] != 1:
+            if score['acc'] != 1:
                 return 0
         # if len(label['from']['table_units']) > 0:
         #     label_tables = sorted(label['from']['table_units'])
@@ -506,7 +528,7 @@ def print_scores(scores, etype):
             print("{:20} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f} {:<20.3f}".format(type_, *this_scores))
 
 
-def evaluate(gold, predict, db_dir, etype, kmaps):
+def evaluate(gold, predict, db_dir, etype, kmaps, table_primarys):
     with open(gold) as f:
         glist = [l.strip().split('\t') for l in f.readlines() if len(l.strip()) > 0]
 
@@ -535,8 +557,6 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
     compound_correct = 0
     compound_detect = 0
     for q_idx, (p, g) in enumerate(zip(plist, glist)):
-        if q_idx <= 229:
-            continue
         p_str = p[0]
         g_str, db = g
         db_name = db
@@ -574,6 +594,8 @@ def evaluate(gold, predict, db_dir, etype, kmaps):
             print(("eval_err_num:{}".format(eval_err_num)))
         # rebuild sql for value evaluation
         kmap = kmaps[db_name]
+        global table_primary
+        table_primary = table_primarys[db_name]
         g_valid_col_units = build_valid_col_units(g_sql['from']['table_units'], schema)
         g_sql = rebuild_sql_val(g_sql)
         g_sql = rebuild_sql_col(g_valid_col_units, g_sql, kmap)
@@ -887,13 +909,37 @@ def build_foreign_key_map(entry):
     return foreign_key_map
 
 
+def build_primary_key_map(entry):
+    cols_orig = entry["column_names_original"]
+    tables_orig = entry["table_names_original"]
+    primary_key_map = {}
+    for tab_name in tables_orig:
+        tab_name = tab_name.lower()
+        tab_key = "__" + tab_name + "__"
+        primary_key_map[tab_key] = []
+
+    for p in entry["primary_keys"]:
+        t, col_name = cols_orig[p]
+        if t < 0:
+            continue
+        tab_name = tables_orig[t]
+        tab_name = tab_name.lower()
+        col_name = col_name.lower()
+
+        tab_key = "__" + tab_name + "__"
+        primary_key_map[tab_key].append("__" + tab_name + "." + col_name + "__")
+    return primary_key_map
+
+
 def build_foreign_key_map_from_json(table):
     with open(table) as f:
         data = json.load(f)
     tables = {}
+    table_primarys = {}
     for entry in data:
         tables[entry['db_id']] = build_foreign_key_map(entry)
-    return tables
+        table_primarys[entry['db_id']] = build_primary_key_map(entry)
+    return tables, table_primarys
 
 
 if __name__ == "__main__":
@@ -913,6 +959,6 @@ if __name__ == "__main__":
 
     assert etype in ["all", "exec", "match"], "Unknown evaluation method"
 
-    kmaps = build_foreign_key_map_from_json(table)
+    kmaps, table_primarys = build_foreign_key_map_from_json(table)
 
-    evaluate(gold, pred, db_dir, etype, kmaps)
+    evaluate(gold, pred, db_dir, etype, kmaps, table_primarys)

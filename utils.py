@@ -311,17 +311,23 @@ def from_acc(model, embed_layer, data, max_batch):
     total_err = 0.0
     graph_err = 0.0
     print(("dev data size {}".format(len(data))))
+    table_dict = get_table_dict("./data/tables.json")
+    dev_db_ids = set()
+    for datum in data:
+        dev_db_ids.add(datum["ts"][5])
+
     for datum in tqdm.tqdm(data):
+        db_id = datum["ts"][5]
+        compound_table = make_compound_table(table_dict, db_id, list(dev_db_ids))
         one_history = datum["history"]
         one_label = datum["label"]
-        table_num = len(datum["ts"][0])
         one_q_seq = datum['question_tokens']
-        one_tab_names = datum["ts"][0]
-        one_cols = datum["ts"][1]
-        foreign_keys = datum["ts"][3]
-        primary_keys = datum["ts"][4]
+        one_tab_names = compound_table["table_names"]
+        one_cols = compound_table["column_names"]
+        foreign_keys = compound_table["foreign_keys"]
+        primary_keys = compound_table["primary_keys"]
         parent_tables = []
-        for par_tab, _ in datum["ts"][1]:
+        for par_tab, _ in compound_table["column_names"]:
             parent_tables.append(par_tab)
         q_emb, q_len, q_q_len, table_graph_list, full_graph_list, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
         st = 0
@@ -340,7 +346,7 @@ def from_acc(model, embed_layer, data, max_batch):
             st = ed
         scores = np.concatenate(scores)
 
-        correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, primary_keys, parent_tables, datum["ts"][0], datum["ts"][1], datum["question_tokens"])
+        correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, primary_keys, parent_tables, one_tab_names, one_cols, datum["question_tokens"])
         if not correct:
             total_err += 1.
 
@@ -490,9 +496,9 @@ def timeout_handler(num, stack):
 def test_acc(model, batch_size, data, output_path):
     table_dict = get_table_dict("./data/tables.json")
     f = open(output_path,"w")
-    dev_db_ids = []
+    dev_db_ids = set()
     for idx, item in enumerate(data[:]):
-        dev_db_ids.append(item["db_id"])
+        dev_db_ids.add(item["db_id"])
 
     table_num_sum = 0
     start_time = time.time()
@@ -501,9 +507,9 @@ def test_acc(model, batch_size, data, output_path):
         db_id = item["db_id"]
         if db_id not in table_dict:
             print(("Error %s not in table_dict" % db_id))
-        tables = make_compound_table(table_dict, db_id, dev_db_ids)
+        tables = make_compound_table(table_dict, db_id, list(dev_db_ids))
         table_num_sum += len(tables["table_names"])
-        sql = model.forward([item["question_toks"]]*batch_size,[], tables)
+        sql = model.forward([item["question_toks"]]*batch_size, [], tables)
         if sql is not None:
             print(sql)
             sql = model.gen_sql(sql, tables)

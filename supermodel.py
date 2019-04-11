@@ -176,7 +176,7 @@ class SuperModel(nn.Module):
         kw_len = np.full(q_len.shape, 3, dtype=np.int64)
 
         stack = Stack()
-        stack.push(("root",None))
+        stack.push(("root", None))
         history = [["root"]]*B
         andor_cond = ""
         has_limit = False
@@ -197,7 +197,6 @@ class SuperModel(nn.Module):
                 break
             vet = stack.pop()
             print(vet, flush=True)
-            # print(vet)
             hs_emb_var, hs_len = self.embed_layer.gen_x_history_batch(history)
             if len(idx_stack) > 0 and stack.size() < idx_stack[-1]:
                 # print("pop!!!!!!!!!!!!!!!!!!!!!!")
@@ -234,7 +233,7 @@ class SuperModel(nn.Module):
                     stack.push("none")
                     history[0].append("none")
                 else:
-                    score = self.multi_sql.forward(q_emb_var,q_len,hs_emb_var,hs_len,mkw_emb_var,mkw_len)
+                    score = self.multi_sql.forward(q_emb_var, q_len, hs_emb_var, hs_len, mkw_emb_var, mkw_len)
                     label = np.argmax(score[0].data.cpu().numpy())
                     label = SQL_OPS[label]
                     history[0].append(label)
@@ -275,8 +274,19 @@ class SuperModel(nn.Module):
                         scores.append(new_score)
                         st = ed
                     scores = np.concatenate(scores)
+                    for ii in range(len(scores)):
+                        print(table_graph_list[ii])
+                        print(scores[ii])
+                        print("###################")
                     from_graph = full_graph_list[np.argmax(scores)]
                     current_sql["from"] = from_graph
+
+                    for idx, table_name in enumerate(one_tab_names):
+                        print("Table {}: {}".format(idx, table_name))
+                        for col_idx, [par_tab, col_name] in enumerate(one_cols):
+                            if par_tab == idx:
+                                print("   {}: {}".format(col_idx, col_name))
+                    print(from_graph)
                     from_tables = list(from_graph.keys())
                     timeout = time.time() + 2
                 else:

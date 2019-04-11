@@ -207,6 +207,13 @@ class WordEmbedding(nn.Module):
         for tab in range(len(one_tables)):
             table_graph_lists += list(generate_four_hop_path_from_seed(tab, parent_nums, foreign_keys))
 
+        simple_graph_lists = []
+        for graph in table_graph_lists:
+            new_graph = deepcopy(graph)
+            for k in new_graph:
+                for idx, l in enumerate(new_graph[k]):
+                    new_graph[k][idx] = l[0]
+            simple_graph_lists.append(new_graph)
         B = len(table_graph_lists)
         q_len = []
         q_q_len = []
@@ -214,7 +221,7 @@ class WordEmbedding(nn.Module):
 
             one_q_q_len, indexed_one_q, one_expanded_col_loc, one_notexpanded_col_loc, one_expanded_tab_loc, one_notexpanded_tab_loc \
                 = self.encode_one_q_with_bert(one_q, one_tables, one_cols, parent_nums, foreign_keys, primary_keys,
-                                              table_graph_lists[b])
+                                              simple_graph_lists[b])
             q_q_len.append(one_q_q_len)
             tokenized_q.append(indexed_one_q)
             q_len.append(len(indexed_one_q))
@@ -229,13 +236,6 @@ class WordEmbedding(nn.Module):
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        simple_graph_lists = []
-        for graph in table_graph_lists:
-            new_graph = deepcopy(graph)
-            for k in new_graph:
-                for idx, l in enumerate(new_graph[k]):
-                    new_graph[k][idx] = l[0]
-            simple_graph_lists.append(new_graph)
         return tokenized_q, q_len, q_q_len, simple_graph_lists, table_graph_lists, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs
 
     def gen_x_history_batch(self, history):
