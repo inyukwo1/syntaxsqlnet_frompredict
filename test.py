@@ -10,6 +10,7 @@ from supermodel import SuperModel
 from pytorch_pretrained_bert import BertModel
 
 if __name__ == '__main__':
+    torch.backends.cudnn.deterministic = True
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_emb', action='store_true',
             help='Train word embedding.')

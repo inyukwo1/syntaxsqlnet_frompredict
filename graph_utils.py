@@ -202,7 +202,6 @@ def append_table(compound_table, new_table):
         compound_table["primary_keys"].append(p + new_column_offset)
     for f, p in new_table["foreign_keys"]:
         compound_table["foreign_keys"].append([f + new_column_offset, p + new_column_offset])
-    compound_table["primary_keys"].extend(new_table["primary_keys"])
     compound_table["column_types"].extend(new_table["column_types"])
     for t, name in new_table["column_names_original"][1:]:
         compound_table["column_names_original"].append([t + new_table_offset, name])

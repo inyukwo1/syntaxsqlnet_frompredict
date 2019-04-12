@@ -93,7 +93,7 @@ class WordEmbedding(nn.Module):
                 if col_idx in table_graph[par_tab]:
                     if col_idx in primary_keys:
                         for f, p in foreign_keys:
-                            if parent_tables[f] in table_graph and p == col_idx:
+                            if parent_tables[f] in table_graph and f in table_graph[parent_tables[f]] and p == col_idx:
                                 _, col_name = table_cols[f]
                     #             break
                     # foreign = False
