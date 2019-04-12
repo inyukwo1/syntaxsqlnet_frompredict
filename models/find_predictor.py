@@ -111,10 +111,10 @@ class FindPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs):
+    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings):
         B = len(q_len)
 
-        q_enc = self.q_bert(q_emb, q_len, q_q_len, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs)
+        q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         q_enc = q_enc[:, 0, :]

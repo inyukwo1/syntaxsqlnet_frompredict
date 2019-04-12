@@ -183,9 +183,9 @@ def make_compound_table(table_dict, my_db_id, db_ids):
     compound_table = deepcopy(table_dict[my_db_id])
     for dev_db_id in selected_db_ids:
         new_table = table_dict[dev_db_id]
-        # if random.randint(0, 10) < 5:
-        #     new_table = compound_table
-        #     compound_table = deepcopy(table_dict[dev_db_id])
+        if random.randint(0, 10) < 5:
+            new_table = compound_table
+            compound_table = deepcopy(table_dict[dev_db_id])
         compound_table = append_table(compound_table, new_table)
     return compound_table
 

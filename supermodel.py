@@ -257,7 +257,7 @@ class SuperModel(nn.Module):
                     parent_nums = [idx for idx, _ in one_cols]
                     foreign_keys = tables["foreign_keys"]
                     primary_keys = tables["primary_keys"]
-                    new_q_emb, new_q_len, new_q_q_len, table_graph_list, full_graph_list, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs = self.embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+                    new_q_emb, new_q_len, new_q_q_len, table_graph_list, full_graph_list, sep_embeddings = self.embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
 
                     st = 0
                     b = len(new_q_emb)
@@ -269,7 +269,7 @@ class SuperModel(nn.Module):
                         new_hs_emb_var = [one_hs_emb_var] * (ed - st)
                         new_hs_emb_var = torch.stack(new_hs_emb_var)
                         new_hs_len = np.array([one_hs_len] * (ed - st), dtype=np.int64)
-                        new_score = self.from_table.forward(new_q_emb[st:ed], new_q_len[st:ed], new_q_q_len[st:ed], new_hs_emb_var, new_hs_len, expanded_col_locs[st:ed], notexpanded_col_locs[st:ed], expanded_tab_locs[st:ed], notexpanded_tab_locs[st:ed])
+                        new_score = self.from_table.forward(new_q_emb[st:ed], new_q_len[st:ed], new_q_q_len[st:ed], new_hs_emb_var, new_hs_len, sep_embeddings[st:ed])
                         new_score = new_score.data.cpu().numpy()
                         scores.append(new_score)
                         st = ed

@@ -111,43 +111,26 @@ class WordEmbedding(nn.Module):
                     col_name_dict[par_tab].append(col_name)
         col_name_list = [l for k, l in col_name_dict.items()]
         col_name_len_list = [len(l) for l in col_name_list]
-        sep_embeddings = [0] * len(table_graph)
+        sep_embeddings = list(range(len(table_graph)))
         for k_idx, k in enumerate(table_graph):
             for cidx in range(max(col_name_len_list)):
-                embed_type = 1
-                for join_key in table_graph[k]:
-                    if join_key in primary_keys:
-                        embed_type = 2
-                        break
-                if embed_type == 1:
-                    sep_embeddings[k_idx] = 3
-                else:
-                    sep_embeddings[k_idx] = 4
                 l = col_name_dict[k]
                 if cidx < len(l):
                     input_q += " [SEP] " + l[cidx]
-                    sep_embeddings.append(embed_type)
+                    sep_embeddings.append(k_idx)
 
         tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
         indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
 
-        one_expanded_col_loc = []
-        one_notexpanded_col_loc = []
-        one_expanded_tab_loc = []
-        one_notexpanded_tab_loc = []
+        sep_embeddings_per_loc = []
         cur_sep_cnt = -1
         for token_idx, token in enumerate(tokenozed_one_q):
             if token == '[SEP]':
                 cur_sep_cnt += 1
-                if sep_embeddings[cur_sep_cnt] == 1:
-                    one_notexpanded_col_loc.append(token_idx)
-                elif sep_embeddings[cur_sep_cnt] == 2:
-                    one_expanded_col_loc.append(token_idx)
-                elif sep_embeddings[cur_sep_cnt] == 3:
-                    one_expanded_tab_loc.append(token_idx)
-                else:
-                    one_notexpanded_tab_loc.append(token_idx)
-        return one_q_q_len, indexed_one_q, one_expanded_col_loc, one_notexpanded_col_loc, one_expanded_tab_loc, one_notexpanded_tab_loc
+                sep_embeddings_per_loc.append(sep_embeddings[cur_sep_cnt])
+            else:
+                sep_embeddings_per_loc.append(-1)
+        return one_q_q_len, indexed_one_q, sep_embeddings_per_loc
 
     def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys, primary_keys, labels):
         tokenized_q = []
@@ -155,10 +138,7 @@ class WordEmbedding(nn.Module):
         q_len = []
         q_q_len = []
         anses = []
-        expanded_col_locs = []
-        notexpanded_col_locs = []
-        expanded_tab_locs = []
-        notexpanded_tab_locs = []
+        sep_embeddings = []
         for idx, one_q in enumerate(q):
             parent_tables = []
             for t, c in table_cols[idx]:
@@ -174,15 +154,12 @@ class WordEmbedding(nn.Module):
                     true_graph = 1.
             anses.append(true_graph)
 
-            one_q_q_len, indexed_one_q, one_expanded_col_loc, one_notexpanded_col_loc, one_expanded_tab_loc, one_notexpanded_tab_loc \
+            one_q_q_len, indexed_one_q, one_sep_embeddings \
                 = self.encode_one_q_with_bert(one_q, tables[idx], table_cols[idx], parent_tables, foreign_keys[idx], primary_keys[idx], generated_graph)
             q_q_len.append(one_q_q_len)
             tokenized_q.append(indexed_one_q)
             q_len.append(len(indexed_one_q))
-            expanded_col_locs.append(one_expanded_col_loc)
-            notexpanded_col_locs.append(one_notexpanded_col_loc)
-            expanded_tab_locs.append(one_expanded_tab_loc)
-            notexpanded_tab_locs.append(one_notexpanded_tab_loc)
+            sep_embeddings.append(one_sep_embeddings)
 
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
@@ -192,15 +169,13 @@ class WordEmbedding(nn.Module):
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
             anses = anses.cuda()
-        return tokenized_q, q_len, q_q_len, anses, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs
+        return tokenized_q, q_len, q_q_len, anses, sep_embeddings
 
     def gen_bert_for_eval(self, one_q, one_tables, one_cols, foreign_keys, primary_keys):
         tokenized_q = []
         parent_nums = []
-        expanded_col_locs = []
-        notexpanded_col_locs = []
-        expanded_tab_locs = []
-        notexpanded_tab_locs = []
+        sep_embeddings = []
+
         for par_tab, _ in one_cols:
             parent_nums.append(par_tab)
         table_graph_lists = []
@@ -219,16 +194,13 @@ class WordEmbedding(nn.Module):
         q_q_len = []
         for b in range(B):
 
-            one_q_q_len, indexed_one_q, one_expanded_col_loc, one_notexpanded_col_loc, one_expanded_tab_loc, one_notexpanded_tab_loc \
+            one_q_q_len, indexed_one_q, one_sep_embeddings \
                 = self.encode_one_q_with_bert(one_q, one_tables, one_cols, parent_nums, foreign_keys, primary_keys,
                                               simple_graph_lists[b])
             q_q_len.append(one_q_q_len)
             tokenized_q.append(indexed_one_q)
             q_len.append(len(indexed_one_q))
-            expanded_col_locs.append(one_expanded_col_loc)
-            notexpanded_col_locs.append(one_notexpanded_col_loc)
-            expanded_tab_locs.append(one_expanded_tab_loc)
-            notexpanded_tab_locs.append(one_notexpanded_tab_loc)
+            sep_embeddings.append(one_sep_embeddings)
 
         max_len = max(q_len)
         for tokenized_one_q in tokenized_q:
@@ -236,7 +208,7 @@ class WordEmbedding(nn.Module):
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, q_q_len, simple_graph_lists, table_graph_lists, expanded_col_locs, notexpanded_col_locs, expanded_tab_locs, notexpanded_tab_locs
+        return tokenized_q, q_len, q_q_len, simple_graph_lists, table_graph_lists, sep_embeddings
 
     def gen_x_history_batch(self, history):
         B = len(history)
