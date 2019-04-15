@@ -115,14 +115,8 @@ class WordEmbedding(nn.Module):
         for k_idx, k in enumerate(table_graph):
             for cidx in range(max(col_name_len_list)):
                 embed_type = 1
-                for join_key in table_graph[k]:
-                    if join_key in primary_keys:
-                        embed_type = 2
-                        break
-                if embed_type == 1:
-                    sep_embeddings[k_idx] = 3
-                else:
-                    sep_embeddings[k_idx] = 4
+                if cidx > 0:
+                    embed_type = 2
                 l = col_name_dict[k]
                 if cidx < len(l):
                     input_q += " [SEP] " + l[cidx]
@@ -143,8 +137,6 @@ class WordEmbedding(nn.Module):
                     one_notexpanded_col_loc.append(token_idx)
                 elif sep_embeddings[cur_sep_cnt] == 2:
                     one_expanded_col_loc.append(token_idx)
-                elif sep_embeddings[cur_sep_cnt] == 3:
-                    one_expanded_tab_loc.append(token_idx)
                 else:
                     one_notexpanded_tab_loc.append(token_idx)
         return one_q_q_len, indexed_one_q, one_expanded_col_loc, one_notexpanded_col_loc, one_expanded_tab_loc, one_notexpanded_tab_loc
