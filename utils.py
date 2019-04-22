@@ -164,7 +164,7 @@ def to_batch_from_candidates(par_tab_nums, data, idxes, st, ed):
 
     return from_candidates
 
-## used for training in train.py
+## used for training in train_spider.py
 def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, prepared_tables, table_type, use_tqdm, bert_model):
     model.train()
     newdata = []
@@ -306,6 +306,57 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
     return cum_loss / len(data)
 
 
+def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data, use_tqdm, bert_model):
+    model.train()
+    newdata = []
+    for entry in data:
+        if len(entry["ts"][0]) > 1:
+            newdata.append(entry)
+    data = newdata
+
+    perm=np.random.permutation(len(data))
+    cum_loss = 0.0
+    st = 0
+    total_err = 0
+
+    for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
+        ed = st+batch_size if st+batch_size < len(perm) else len(perm)
+        q_seq, history, label = to_batch_seq(data, perm, st, ed)
+        hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
+        tabs = []
+        cols = []
+        foreign_keys = []
+        primary_keys = []
+        for i in range(st, ed):
+            tabs.append(data[perm[i]]['ts'][0])
+            cols.append(data[perm[i]]["ts"][1])
+            foreign_keys.append(data[perm[i]]["ts"][3])
+            primary_keys.append(data[perm[i]]["ts"][4])
+        q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+
+        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings)
+        loss = model.loss(score, label)
+
+        err = model.check_acc(score, label)
+        total_err += err
+
+        # print("loss {}".format(loss.data.cpu().numpy()))
+        if gpu:
+            cum_loss += loss.data.cpu().numpy()*(ed - st)
+        else:
+            cum_loss += loss.data.numpy()*(ed - st)
+        optimizer.zero_grad()
+        bert_model.zero_grad()
+        loss.backward()
+        optimizer.step()
+        bert_model.step()
+
+        st = ed
+    print(("Train FROM {} acc total acc: {}".format(is_onefrom, 1 - total_err * 1.0 / len(data))), flush=True)
+
+    return cum_loss / len(data)
+
+
 def from_acc(model, embed_layer, data, max_batch):
     model.eval()
     total_err = 0.0
@@ -317,15 +368,16 @@ def from_acc(model, embed_layer, data, max_batch):
         dev_db_ids.add(datum["ts"][5])
 
     for datum in tqdm.tqdm(data):
+        # This part is for a from prediction
         db_id = datum["ts"][5]
         compound_table = make_compound_table(table_dict, db_id, list(dev_db_ids))
-        one_history = datum["history"]
-        one_label = datum["label"]
+        one_history = datum["history"] # For typesql and sqlnet, just give ["none"]
         one_q_seq = datum['question_tokens']
         one_tab_names = compound_table["table_names"]
         one_cols = compound_table["column_names"]
         foreign_keys = compound_table["foreign_keys"]
         primary_keys = compound_table["primary_keys"]
+        one_label = datum["label"]
         parent_tables = []
         for par_tab, _ in compound_table["column_names"]:
             parent_tables.append(par_tab)
@@ -354,7 +406,7 @@ def from_acc(model, embed_layer, data, max_batch):
     return 1 - total_err * 1.0 / len(data)
 
 
-## used for development evaluation in train.py
+## used for development evaluation in train_spider.py
 def epoch_acc(model, batch_size, component, embed_layer,data, table_type, error_print=False, train_flag = False):
     model.eval()
     perm = list(range(len(data)))

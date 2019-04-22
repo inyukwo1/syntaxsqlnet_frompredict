@@ -17,7 +17,7 @@ Source code of our EMNLP 2018 paper: [SyntaxSQLNet: Syntax Tree Networks for Com
 
 #### Environment Setup
 
-1. The code uses Python 2.7 and [Pytorch 0.2.0](https://pytorch.org/previous-versions/) GPU.
+1. The code uses Python 3.6 and [Pytorch 1.0.1](https://pytorch.org/previous-versions/) GPU.
 2. Install Python dependency: `pip install -r requirements.txt`
 
 #### Download Data, Embeddings, Scripts, and Pretrained Models
@@ -28,6 +28,12 @@ Source code of our EMNLP 2018 paper: [SyntaxSQLNet: Syntax Tree Networks for Com
    -`generated_datasets/`
     - ``generated_data`` for original Spider training datasets, pretrained models can be found at `generated_data/saved_models`
     - ``generated_data_augment`` for original Spider + augmented training datasets, pretrained models can be found at `generated_data_augment/saved_models`
+5. ask ihna for get `generated_data_augment_from` folder. Copy them into `generated_datasets`.
+
+#### For the FROM clause predicting
+
+1. If you want to predict from clause, see `test_from.py`.
+2. For typesql and sqlnet, use `test_from.sh`
 
 #### Generating Train/dev Data for Modules
 You could find preprocessed train/dev data in ``generated_datasets/``.

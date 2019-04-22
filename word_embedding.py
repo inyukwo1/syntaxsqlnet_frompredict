@@ -88,24 +88,17 @@ class WordEmbedding(nn.Module):
         col_name_dict = {}
         for table_num in table_graph:
             col_name_dict[table_num] = []
-        for col_idx, [par_tab, col_name] in enumerate(table_cols):
+        renamed_table_cols = deepcopy(table_cols)
+        for col_idx, [par_tab, col_name] in enumerate(renamed_table_cols):
             if par_tab in table_graph:
                 if col_idx in table_graph[par_tab]:
                     if col_idx in primary_keys:
                         for f, p in foreign_keys:
                             if parent_tables[f] in table_graph and f in table_graph[parent_tables[f]] and p == col_idx:
-                                _, col_name = table_cols[f]
-                    #             break
-                    # foreign = False
-                    # for f, p in foreign_keys:
-                    #     if col_idx == f and p in primary_keys and parent_tables[p] in table_graph and p in table_graph[parent_tables[p]]:
-                    #         foreign = True
-                    #         break
-                    #     if col_idx == p and f in primary_keys and parent_tables[f] in table_graph and f in table_graph[parent_tables[f]]:
-                    #         foreign = True
-                    #         break
-                    # if foreign:
-                    #     continue
+                                _, col_name = renamed_table_cols[f]
+                        for f, p in foreign_keys:
+                            if parent_tables[f] in table_graph and f in table_graph[parent_tables[f]] and p == col_idx:
+                                renamed_table_cols[f][1] = col_name
                     col_name_dict[par_tab].append(col_name)
                 else:
                     col_name_dict[par_tab].append(col_name)
@@ -237,7 +230,7 @@ class WordEmbedding(nn.Module):
                     elif item == "asc":
                         item = "ascending"
                     elif item == "desc":
-                        item == "descending"
+                        item = "descending"
                     if item in (
                     "none", "select", "from", "where", "having", "limit", "intersect", "except", "union", 'not',
                     'between', '=', '>', '<', 'in', 'like', 'is', 'exists', 'root', 'ascending', 'descending'):

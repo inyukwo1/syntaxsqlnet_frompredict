@@ -19,7 +19,7 @@ from models.multisql_predictor import MultiSqlPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
 from models.op_predictor import OpPredictor
-from models.find_predictor import FindPredictor
+from models.from_predictor import FromPredictor
 from preprocess_train_dev_data import index_to_column_name
 from copy import deepcopy
 
@@ -142,7 +142,7 @@ class SuperModel(nn.Module):
         self.andor = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=gpu, use_hs=use_hs)
         self.andor.eval()
 
-        self.from_table = FindPredictor(N_word=N_word, N_h=200, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
+        self.from_table = FromPredictor(N_word=N_word, N_h=200, N_depth=N_depth, gpu=gpu, use_hs=use_hs, bert=bert)
         self.from_table.eval()
 
         self.softmax = nn.Softmax() #dim=1

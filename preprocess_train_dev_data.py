@@ -255,6 +255,55 @@ class AndOrPredictor:
         return self.history,-1
 
 
+def parser_item_one_from(question_tokens, query_tokens, sql, table, dataset):
+    from_count = 0
+    for query_token in query_tokens:
+        if query_token.lower() == "from":
+            from_count += 1
+    if from_count > 1:
+        return
+
+    table_schema = [
+        table["table_names"],
+        table["column_names"],
+        table["column_types"],
+        table["foreign_keys"],
+        table["primary_keys"],
+        table["db_id"]
+    ]
+
+    from_tables = sql["from"]["table_units"]
+    table_list = [table[1] for table in from_tables]
+    join_conds = sql["from"]["conds"]
+    join_cols_list = []
+    for cond in join_conds:
+        if cond == 'and':
+            continue
+        join_cols_list.append(cond[2][1][1])
+        join_cols_list.append(cond[3][1])
+    join_table_dict = dict()
+    for table_num in table_list:
+        if type(table_num) is dict:
+            print("WRONG2")  # nested query is in from clause
+            return
+        join_table_dict[table_num] = set()
+    for col in join_cols_list:
+        parent_table = table["column_names"][col][0]
+        if parent_table not in join_table_dict:
+            print("WRONG111111")  # syntaxsqlnet bug - parsing bug
+            return
+        else:
+            join_table_dict[parent_table].add(col)
+    for table_unit in join_table_dict:
+        join_table_dict[table_unit] = list(join_table_dict[table_unit])
+    dataset['onefrom_dataset'].append({
+        "question_tokens": question_tokens,
+        "ts": table_schema,
+        "history": ["none"],
+        "label": join_table_dict
+    })
+
+
 def parser_item_with_long_history(question_tokens, sql, table, history, dataset):
     table_schema = [
         table["table_names"],
@@ -680,9 +729,13 @@ def parse_data(data):
         "des_asc_dataset": [],
         "having_dataset": [],
         "andor_dataset":[],
-        "from_dataset":[]
+        "from_dataset":[],
+        "onefrom_dataset": []
     }
     table_dict = get_table_dict(table_data_path)
+    for item in data:
+        parser_item_one_from(item["question_toks"], item["query_toks"], item["sql"], table_dict[item["db_id"]], dataset)
+
     for item in data:
         if history_option == "full":
         # parser_item(item["question_toks"], item["sql"], table_dict[item["db_id"]], [], dataset)

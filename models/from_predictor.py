@@ -91,15 +91,16 @@ def graph_maker(tab_list, foreign_keys, parent_tables):
     return graph
 
 
-class FindPredictor(nn.Module):
-    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert):
-        super(FindPredictor, self).__init__()
+class FromPredictor(nn.Module):
+    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert, onefrom):
+        super(FromPredictor, self).__init__()
         self.N_h = N_h
         self.gpu = gpu
         self.use_hs = use_hs
         self.threshold = 0.5
 
         self.q_bert = bert
+        self.onefrom = onefrom
         self.encoded_num = 1024
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
@@ -108,6 +109,8 @@ class FindPredictor(nn.Module):
 
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
+        if self.onefrom:
+            self.onefrom_vec = nn.Parameter(torch.zeros(N_h))
         if gpu:
             self.cuda()
 
@@ -117,6 +120,9 @@ class FindPredictor(nn.Module):
         q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
+        if self.onefrom:
+            hs_enc = self.onefrom_vec.view(1, -1).expand(B,  -1)
+
         q_enc = q_enc[:, 0, :]
         q_enc = torch.cat((q_enc, hs_enc), dim=1)
         x = self.outer1(q_enc)

@@ -56,7 +56,7 @@ python train.py \
 #epoch=300
 #for module in  root_tem
 #do
-#  python train.py \
+#  python train_spider.py \
 #    --data_root    ${data_root} \
 #    --save_dir     ${save_dir} \
 #    --history_type ${hs} \
@@ -72,7 +72,7 @@ python train.py \
 #epoch=300
 #for module in  des_asc
 #do
-#  python train.py \
+#  python train_spider.py \
 #    --data_root    ${data_root} \
 #    --save_dir     ${save_dir} \
 #    --history_type ${hs} \
@@ -89,7 +89,7 @@ python train.py \
 #epoch=300
 #for module in multi_sql
 #do
-#  python train.py \
+#  python train_spider.py \
 #    --data_root    ${data_root} \
 #    --save_dir     ${save_dir} \
 #    --history_type ${hs} \
@@ -105,7 +105,7 @@ python train.py \
 #epoch=300
 #for module in having andor
 #do
-#  python train.py \
+#  python train_spider.py \
 #    --data_root    ${data_root} \
 #    --save_dir     ${save_dir} \
 #    --history_type ${hs} \
@@ -122,7 +122,7 @@ python train.py \
 #epoch=300
 #for module in op
 #do
-#  python train.py \
+#  python train_spider.py \
 #    --data_root    ${data_root} \
 #    --save_dir     ${save_dir} \
 #    --history_type ${hs} \
@@ -138,7 +138,7 @@ python train.py \
 #epoch=300
 #for module in agg
 #do
-#  python train.py \
+#  python train_spider.py \
 #    --data_root    ${data_root} \
 #    --save_dir     ${save_dir} \
 #    --history_type ${hs} \
@@ -155,7 +155,7 @@ python train.py \
 #epoch=300
 #for module in keyword
 #do
-#  python train.py \
+#  python train_spider.py \
 #    --data_root    ${data_root} \
 #    --save_dir     ${save_dir} \
 #    --history_type ${hs} \

@@ -15,7 +15,7 @@ from models.multisql_predictor import MultiSqlPredictor
 from models.op_predictor import OpPredictor
 from models.root_teminal_predictor import RootTeminalPredictor
 from models.andor_predictor import AndOrPredictor
-from models.find_predictor import FindPredictor
+from models.from_predictor import FromPredictor
 from pytorch_pretrained_bert import BertModel
 from hyperparameters import H_PARAM
 from models.bert_container import BertContainer
@@ -28,14 +28,13 @@ def random_seed_set(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor', 'from')
+
+TRAIN_COMPONENTS = ('multi_sql','keyword','col','op','agg','root_tem','des_asc','having','andor')
 SQL_TOK = ['<UNK>', '<END>', 'WHERE', 'AND', 'EQL', 'GT', 'LT', '<BEG>']
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--tqdm', action='store_true',
             help='If set, use tqdm.')
-    parser.add_argument('--bert', action='store_true',
-            help='If set, use bert to encode question.')
     parser.add_argument('--toy', action='store_true',
             help='If set, use small data; used for fast debugging.')
     parser.add_argument('--save_dir', type=str, default='',
@@ -73,10 +72,6 @@ if __name__ == '__main__':
         GPU = True
     else:
         GPU = False
-    if args.bert:
-        BERT = True
-    else:
-        BERT = False
     learning_rate = H_PARAM["learning_rate"]
     bert_learning_rate = H_PARAM["bert_learning_rate"]
     if args.train_component not in TRAIN_COMPONENTS:
@@ -89,10 +84,6 @@ if __name__ == '__main__':
     word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), load_used=args.train_emb, use_small=USE_SMALL)
     print("finished load word embedding")
     model = None
-    if BERT:
-        bert_model = BertContainer()
-    else:
-        bert_model = None
     if args.train_component == "multi_sql":
         model = MultiSqlPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "keyword":
@@ -111,32 +102,21 @@ if __name__ == '__main__':
         model = HavingPredictor(N_word=N_word,N_h=N_h,N_depth=N_depth, gpu=GPU, use_hs=use_hs)
     elif args.train_component == "andor":
         model = AndOrPredictor(N_word=N_word, N_h=N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs)
-    elif args.train_component == "from":
-        model = FindPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=use_hs, bert=bert_model.bert)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
 
     print("finished build model")
 
     print_flag = False
-    embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=BERT, trainable=args.train_emb)
+    embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=False, trainable=args.train_emb)
     print("start training")
     best_acc = 0.0
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
-        bert_model.train()
         print((' Loss = %s'% epoch_train(GPU,
-               model, optimizer, H_PARAM["batch_size"], args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, bert_model=bert_model)))
-        bert_model.eval()
-        if args.train_component == "from":
-            acc = from_acc(model, embed_layer, dev_data,  1)
-        else:
-            acc = epoch_acc(model, 1, args.train_component,embed_layer, dev_data, table_type=args.table_type)
+               model, optimizer, H_PARAM["batch_size"], args.train_component, embed_layer, train_data, prepared_tables, table_type=args.table_type, use_tqdm=args.tqdm, bert_model=None)))
+
+        acc = epoch_acc(model, 1, args.train_component,embed_layer, dev_data, table_type=args.table_type)
         if acc > best_acc:
             best_acc = acc
             print("Save model...")
             torch.save(model.state_dict(), args.save_dir+"/{}_models.dump".format(args.train_component))
-            if BERT:
-                print("Save bert")
-                torch.save(bert_model.main_bert.state_dict(), args.save_dir+"/bert_{}_models.dump".format(args.train_component))
-                torch.save(bert_model.bert_param.state_dict(), args.save_dir+"/bert_{}_params.dump".format(args.train_component))
-
