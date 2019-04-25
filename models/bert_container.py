@@ -28,12 +28,12 @@ def list_tensor_tensify(list_tensor):
 class BertParameterWrapper(nn.Module):
     def __init__(self):
         super(BertParameterWrapper, self).__init__()
-        self.pos0 = nn.Parameter(torch.rand(1024) / 100)
-        self.pos1 = nn.Parameter(torch.rand(1024) / 100)
-        self.pos2 = nn.Parameter(torch.rand(1024) / 100)
-        self.pos3 = nn.Parameter(torch.rand(1024) / 100)
-        self.pos4 = nn.Parameter(torch.rand(1024) / 100)
-        self.pos5 = nn.Parameter(torch.rand(1024) / 100)
+        self.pos0 = nn.Parameter(torch.rand(1024) / 30)
+        self.pos1 = nn.Parameter(torch.rand(1024) / 30)
+        self.pos2 = nn.Parameter(torch.rand(1024) / 30)
+        self.pos3 = nn.Parameter(torch.rand(1024) / 30)
+        self.pos4 = nn.Parameter(torch.rand(1024) / 30)
+        self.pos5 = nn.Parameter(torch.rand(1024) / 30)
 
 
 class BertContainer:
@@ -70,22 +70,25 @@ class BertContainer:
         for one_sep_embeddings in sep_embeddings:
             embed_tensors = []
             for loc_idx in range(max_seq_len):
-                if loc_idx >= len(one_sep_embeddings):
-                    embed_tensor = torch.zeros_like(self.bert_param.pos0)
-                elif one_sep_embeddings[loc_idx] == -1:
-                    embed_tensor = torch.zeros_like(self.bert_param.pos0)
-                elif one_sep_embeddings[loc_idx] == 0:
-                    embed_tensor = self.bert_param.pos0
-                elif one_sep_embeddings[loc_idx] == 1:
-                    embed_tensor = self.bert_param.pos1
-                elif one_sep_embeddings[loc_idx] == 2:
-                    embed_tensor = self.bert_param.pos2
-                elif one_sep_embeddings[loc_idx] == 3:
-                    embed_tensor = self.bert_param.pos3
-                elif one_sep_embeddings[loc_idx] == 4:
-                    embed_tensor = self.bert_param.pos4
-                elif one_sep_embeddings[loc_idx] == 5:
-                    embed_tensor = self.bert_param.pos5
+                embed_tensor = torch.zeros_like(self.bert_param.pos0)
+                if loc_idx < len(one_sep_embeddings) and one_sep_embeddings[loc_idx] >= 0:
+                    embed_tensor[one_sep_embeddings[loc_idx]] = 1
+                # if loc_idx >= len(one_sep_embeddings):
+                #     embed_tensor = torch.zeros_like(self.bert_param.pos0)
+                # elif one_sep_embeddings[loc_idx] == -1:
+                #     embed_tensor = torch.zeros_like(self.bert_param.pos0)
+                # elif one_sep_embeddings[loc_idx] == 0:
+                #     embed_tensor = self.bert_param.pos0
+                # elif one_sep_embeddings[loc_idx] == 1:
+                #     embed_tensor = self.bert_param.pos1
+                # elif one_sep_embeddings[loc_idx] == 2:
+                #     embed_tensor = self.bert_param.pos2
+                # elif one_sep_embeddings[loc_idx] == 3:
+                #     embed_tensor = self.bert_param.pos3
+                # elif one_sep_embeddings[loc_idx] == 4:
+                #     embed_tensor = self.bert_param.pos4
+                # elif one_sep_embeddings[loc_idx] == 5:
+                #     embed_tensor = self.bert_param.pos5
                 embed_tensors.append(embed_tensor)
             embed_tensors = torch.stack(embed_tensors)
             expand_embeddings.append(embed_tensors)
@@ -112,4 +115,4 @@ class BertContainer:
 
     def step(self):
         self.main_bert_optimizer.step()
-        self.other_optimizer.step()
+        #self.other_optimizer.step()
