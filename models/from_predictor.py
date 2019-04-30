@@ -92,7 +92,7 @@ def graph_maker(tab_list, foreign_keys, parent_tables):
 
 
 class FromPredictor(nn.Module):
-    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert, onefrom):
+    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert, onefrom, use_lstm=False):
         super(FromPredictor, self).__init__()
         self.N_h = N_h
         self.gpu = gpu
@@ -101,23 +101,32 @@ class FromPredictor(nn.Module):
 
         self.q_bert = bert
         self.onefrom = onefrom
+        self.use_lstm = use_lstm
         self.encoded_num = 1024
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                 num_layers=N_depth, batch_first=True,
                 dropout=0.3, bidirectional=True)
 
-        self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
-        self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if self.onefrom:
             self.onefrom_vec = nn.Parameter(torch.zeros(N_h))
+        if self.use_lstm:
+            self.main_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+                                     num_layers=6, batch_first=True,
+                                     dropout=0.3, bidirectional=True)
+            self.encoded_num = N_h
+
+        self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
+        self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if gpu:
             self.cuda()
 
     def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings):
         B = len(q_len)
-
-        q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
+        if self.use_lstm:
+            q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
+        else:
+            q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         if self.onefrom:

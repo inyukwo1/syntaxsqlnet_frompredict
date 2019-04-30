@@ -35,6 +35,7 @@ if __name__ == '__main__':
     parser.add_argument('--tqdm', action='store_true',
             help='If set, use tqdm.')
     parser.add_argument('--onefrom', action='store_true')
+    parser.add_argument('--use_lstm', action="store_true")
     parser.add_argument('--save_dir', type=str, default='',
             help='set model save directory.')
     parser.add_argument('--data_root', type=str, default='',
@@ -69,7 +70,7 @@ if __name__ == '__main__':
     word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word))
     print("finished load word embedding")
     bert_model = BertContainer()
-    model = FromPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=True, bert=bert_model.bert, onefrom=args.onefrom)
+    model = FromPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=True, bert=bert_model.bert, onefrom=args.onefrom, use_lstm=args.use_lstm)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
 
     print("finished build model")
@@ -82,9 +83,9 @@ if __name__ == '__main__':
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         bert_model.train()
         print((' Loss = %s'% from_train(GPU,
-               model, optimizer, H_PARAM["batch_size"], args.onefrom, embed_layer, train_data, use_tqdm=args.tqdm, bert_model=bert_model)))
+               model, optimizer, H_PARAM["batch_size"], args.onefrom, embed_layer, train_data, use_tqdm=args.tqdm, bert_model=bert_model, use_lstm=args.use_lstm)))
         bert_model.eval()
-        acc = from_acc(model, embed_layer, dev_data,  1)
+        acc = from_acc(model, embed_layer, dev_data,  1, use_lstm=args.use_lstm)
         if acc > best_acc:
             best_acc = acc
             print("Save model...")

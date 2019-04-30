@@ -4,12 +4,13 @@
  hs=full
  tbl=std
  d_type="_augment_from"
+ log_name="trial283"
 
 
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
 
 data_root=generated_datasets/generated_data${d_type}
-save_dir="${data_root}/saved_models_trial214"
+save_dir="${data_root}/saved_models_${log_name}"
 log_dir=${save_dir}/train_log
 mkdir -p ${save_dir}
 mkdir -p ${log_dir}
@@ -18,7 +19,7 @@ mkdir -p ${log_dir}
 export CUDA_VISIBLE_DEVICES=3
 
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "214 1/30 initialize, not train, onehot encode!!"
+echo "${log_name} no namechange!!"
 
 module=from
 epoch=600

@@ -306,7 +306,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
     return cum_loss / len(data)
 
 
-def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data, use_tqdm, bert_model):
+def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data, use_tqdm, bert_model, use_lstm=False):
     model.train()
     newdata = []
     for entry in data:
@@ -332,7 +332,12 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             cols.append(data[perm[i]]["ts"][1])
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
-        q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+        if use_lstm:
+            q_emb, q_len, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+            q_q_len = None
+            sep_embeddings = None
+        else:
+            q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
 
         score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings)
         loss = model.loss(score, label)
@@ -357,7 +362,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
     return cum_loss / len(data)
 
 
-def from_acc(model, embed_layer, data, max_batch):
+def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
     model.eval()
     total_err = 0.0
     graph_err = 0.0
@@ -381,7 +386,13 @@ def from_acc(model, embed_layer, data, max_batch):
         parent_tables = []
         for par_tab, _ in compound_table["column_names"]:
             parent_tables.append(par_tab)
-        q_emb, q_len, q_q_len, table_graph_list, full_graph_list, sep_embeddings = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+        if use_lstm:
+            q_emb, q_len, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+            q_q_len = [0] * len(q_emb)
+            sep_embeddings = [0] * len(q_emb)
+        else:
+            q_emb, q_len, q_q_len, table_graph_list, full_graph_list, sep_embeddings = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+
         st = 0
         tab_st = 0
         b = len(q_emb)
