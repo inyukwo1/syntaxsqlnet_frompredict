@@ -67,7 +67,7 @@ if __name__ == '__main__':
     dev_data = load_train_dev_dataset(train_component, "dev", "full", args.data_root)
     prepared_tables = prepare_tables(train_data, "std")
 
-    word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word))
+    word_emb = load_word_emb('glove/glove.%dB.%dd.txt'%(B_word,N_word), use_small=True)
     print("finished load word embedding")
     bert_model = BertContainer()
     model = FromPredictor(N_word=N_word, N_h=FROM_N_h, N_depth=N_depth, gpu=GPU, use_hs=True, bert=bert_model.bert, onefrom=args.onefrom, use_lstm=args.use_lstm)
@@ -85,11 +85,12 @@ if __name__ == '__main__':
         print((' Loss = %s'% from_train(GPU,
                model, optimizer, H_PARAM["batch_size"], args.onefrom, embed_layer, train_data, use_tqdm=args.tqdm, bert_model=bert_model, use_lstm=args.use_lstm)))
         bert_model.eval()
-        acc = from_acc(model, embed_layer, dev_data,  1, use_lstm=args.use_lstm)
-        if acc > best_acc:
-            best_acc = acc
-            print("Save model...")
-            torch.save(model.state_dict(), args.save_dir+"/from_models.dump")
-            torch.save(bert_model.main_bert.state_dict(), args.save_dir+"/bert_from_models.dump")
-            torch.save(bert_model.bert_param.state_dict(), args.save_dir+"/bert_from_params.dump")
+        if i % 10 == 0:
+            acc = from_acc(model, embed_layer, dev_data,  1, use_lstm=args.use_lstm)
+            if acc > best_acc:
+                best_acc = acc
+                print("Save model...")
+                torch.save(model.state_dict(), args.save_dir+"/from_models.dump")
+                torch.save(bert_model.main_bert.state_dict(), args.save_dir+"/bert_from_models.dump")
+                torch.save(bert_model.bert_param.state_dict(), args.save_dir+"/bert_from_params.dump")
 

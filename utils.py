@@ -270,20 +270,6 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
 
         elif component == "andor":
             score = model.forward(q_emb_var, q_len, hs_emb_var, hs_len)
-
-        elif component == "from":
-            tabs = []
-            cols = []
-            foreign_keys = []
-            primary_keys = []
-            for i in range(st, ed):
-                tabs.append(data[perm[i]]['ts'][0])
-                cols.append(data[perm[i]]["ts"][1])
-                foreign_keys.append(data[perm[i]]["ts"][3])
-                primary_keys.append(data[perm[i]]["ts"][4])
-            q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
-
-            score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -333,13 +319,16 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
         if use_lstm:
-            q_emb, q_len, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+            q_emb, q_len, table_emb, table_name_len, table_len, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
             q_q_len = None
             sep_embeddings = None
         else:
             q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+            table_len = None
+            table_name_len = None
+            table_emb = None
 
-        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings)
+        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len, table_name_len)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -387,11 +376,14 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
         for par_tab, _ in compound_table["column_names"]:
             parent_tables.append(par_tab)
         if use_lstm:
-            q_emb, q_len, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+            q_emb, q_len, table_emb, table_name_len, table_len, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
             q_q_len = [0] * len(q_emb)
             sep_embeddings = [0] * len(q_emb)
         else:
             q_emb, q_len, q_q_len, table_graph_list, full_graph_list, sep_embeddings = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+            table_emb = [0] * len(q_emb)
+            table_name_len = [0] * len(q_emb)
+            table_len = [0] * len(q_emb)
 
         st = 0
         tab_st = 0
@@ -403,7 +395,7 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
                 ed = b
             history = [one_history] * (ed - st)
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-            score = model.forward(q_emb[st:ed], q_len[st:ed], q_q_len[st:ed], hs_emb_var, hs_len, sep_embeddings[st:ed])
+            score = model.forward(q_emb[st:ed], q_len[st:ed], q_q_len[st:ed], hs_emb_var, hs_len, sep_embeddings[st:ed], table_emb[st:ed], table_len[st:ed], table_name_len[st:ed])
             score = score.data.cpu().numpy()
             scores.append(score)
             st = ed

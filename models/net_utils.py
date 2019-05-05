@@ -25,9 +25,7 @@ def seq_conditional_weighted_num(attention_layer, predicate_tensor, predicate_le
         max_conditional_len = None
     B = len(predicate_len)
     SIZE_CHECK(predicate_tensor, [B, max_predicate_len, None])
-    SIZE_CHECK(conditional_tensor, [B, max_conditional_len, None])
     co_attention = torch.bmm(conditional_tensor, attention_layer(predicate_tensor).transpose(1, 2))
-    SIZE_CHECK(co_attention, [B, max_conditional_len, max_predicate_len])
     for idx, num in enumerate(predicate_len):
         if num < max_predicate_len:
             co_attention[idx, :, num:] = -100

@@ -4,7 +4,7 @@
  hs=full
  tbl=std
  d_type="_augment_from"
- log_name="trial283"
+ log_name="trial309"
 
 
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
@@ -16,15 +16,17 @@ mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=6
 
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "${log_name} no namechange!!"
+echo "${log_name} syntaxsql style - no hs fast ver onefrom!!!!"
 
 module=from
 epoch=600
 python train_from.py \
   --tqdm \
+  --onefrom \
+  --use_lstm \
   --data_root    ${data_root} \
   --save_dir     ${save_dir} \
   --epoch        ${epoch} \

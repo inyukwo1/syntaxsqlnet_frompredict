@@ -714,7 +714,7 @@ class SuperModel(nn.Module):
                     break
         return table_alias_dict, ret
 
-    def gen_sql(self, sql,table):
+    def gen_sql(self, sql, table):
         select_clause = ""
         from_clause = ""
         groupby_clause = ""
@@ -743,7 +743,7 @@ class SuperModel(nn.Module):
                     if table["column_names"][item[2]][0] != -1:
                         candidate_tables.add(table["column_names"][item[2]][0])
         if not self.with_from:
-            table_alias_dict, from_clause = self.gen_from(candidate_tables,table)
+            table_alias_dict, from_clause = self.gen_from(candidate_tables, table)
         else:
             table_alias_dict, from_clause = self.gen_from_graph(sql["from"], table)
         ret = []

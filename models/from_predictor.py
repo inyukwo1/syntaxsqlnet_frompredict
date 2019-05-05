@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from models.net_utils import run_lstm, SIZE_CHECK
+from models.net_utils import run_lstm, SIZE_CHECK, seq_conditional_weighted_num, col_tab_name_encode
 from graph_utils import *
 
 
@@ -112,23 +112,41 @@ class FromPredictor(nn.Module):
             self.onefrom_vec = nn.Parameter(torch.zeros(N_h))
         if self.use_lstm:
             self.main_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
-                                     num_layers=6, batch_first=True,
+                                     num_layers=N_depth, batch_first=True,
+                                     dropout=0.3, bidirectional=True)
+            self.q_att = nn.Linear(N_h, N_h)
+            self.q_out = nn.Linear(N_h, N_h)
+            self.table_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+                                     num_layers=N_depth, batch_first=True,
+                                     dropout=0.3, bidirectional=True)
+
+            self.table_onemore_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
+                                     num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
             self.encoded_num = N_h
+            self.q_score_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 1))
 
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings):
+    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb=None, table_len=None, table_name_len=None):
         B = len(q_len)
-        if self.use_lstm:
-            q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
-        else:
-            q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
+        if self.use_lstm:
+            q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
+            t_enc, _ = col_tab_name_encode(table_emb, table_name_len, table_len, self.table_lstm)
+            t_enc, _ = run_lstm(self.table_onemore_lstm, t_enc, table_len)
+
+            q_weighted_num = seq_conditional_weighted_num(self.q_att, q_enc, q_len, t_enc, table_len).sum(1)
+            SIZE_CHECK(q_weighted_num, [B, self.N_h])
+            q_weighted_num = self.q_out(q_weighted_num)
+            x = self.q_score_out(q_weighted_num).squeeze(1)
+            return x
+        else:
+            q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         if self.onefrom:
             hs_enc = self.onefrom_vec.view(1, -1).expand(B,  -1)
 
