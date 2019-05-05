@@ -179,27 +179,27 @@ class FromPredictor(nn.Module):
 
     def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, primary_keys, parent_tables, table_names, column_names, question):
         table_num_ed = len(table_names)
-        for predicted_graph, sc in zip(table_graph_list, score):
-            print("$$$$$$$$$$$$$$$$$")
-            print(predicted_graph)
-            print("~~~~~")
-            print(sc)
+        # for predicted_graph, sc in zip(table_graph_list, score):
+        #     print("$$$$$$$$$$$$$$$$$")
+        #     print(predicted_graph)
+        #     print("~~~~~")
+        #     print(sc)
         correct = False
 
         selected_graph = table_graph_list[np.argmax(score)]
         graph_correct = graph_checker(selected_graph, graph, foreign_keys, primary_keys)
-        print("#### " + " ".join(question))
-        for idx, table_name in enumerate(table_names):
-            print("Table {}: {}".format(idx, table_name))
-            for col_idx, [par_tab, col_name] in enumerate(column_names):
-                if par_tab == idx:
-                    print("   {}: {}".format(col_idx, col_name))
-
-        print("=======")
-        print(selected_graph)
-        print("========")
-        print(graph)
-        print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
+        # print("#### " + " ".join(question))
+        # for idx, table_name in enumerate(table_names):
+        #     print("Table {}: {}".format(idx, table_name))
+        #     for col_idx, [par_tab, col_name] in enumerate(column_names):
+        #         if par_tab == idx:
+        #             print("   {}: {}".format(col_idx, col_name))
+        #
+        # print("=======")
+        # print(selected_graph)
+        # print("========")
+        # print(graph)
+        # print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
         return graph_correct
 
     def score_to_tables(self, score, foreign_keys, parent_tables):

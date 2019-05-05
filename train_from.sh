@@ -4,7 +4,7 @@
  hs=full
  tbl=std
  d_type="_augment_from"
- log_name="trial309"
+ log_name="trial0"
 
 
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
@@ -16,7 +16,7 @@ mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=6
+export CUDA_VISIBLE_DEVICES=0
 
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
 echo "${log_name} syntaxsql style - no hs fast ver onefrom!!!!"

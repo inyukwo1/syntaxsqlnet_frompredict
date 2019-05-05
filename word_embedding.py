@@ -136,10 +136,8 @@ class WordEmbedding(nn.Module):
             cols_seq = []
             for table_num in generated_graph:
                 col_names = col_name_dict[table_num]
-                for col_name in col_names:
-                    one_col_seq = table_name[table_num].split(" ")
-                    one_col_seq += col_name.split(" ")
-                    cols_seq.append(one_col_seq)
+                one_col_seq = table_name[table_num].split(" ")
+                cols_seq.append(one_col_seq)
             table_embs_len[idx] = len(cols_seq)
             table_embs += cols_seq
 
@@ -235,10 +233,8 @@ class WordEmbedding(nn.Module):
             cols_seq = []
             for table_num in generated_graph:
                 col_names = col_name_dict[table_num]
-                for col_name in col_names:
-                    one_col_seq = one_tables[table_num].split(" ")
-                    one_col_seq += col_name.split(" ")
-                    cols_seq.append(one_col_seq)
+                one_col_seq = one_tables[table_num].split(" ")
+                cols_seq.append(one_col_seq)
             table_embs_len[b] = len(cols_seq)
             table_embs += cols_seq
 
