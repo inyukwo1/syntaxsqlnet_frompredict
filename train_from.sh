@@ -4,7 +4,7 @@
  hs=full
  tbl=std
  d_type="_augment_from"
- log_name="trial0"
+ log_name="trial1"
 
 
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
@@ -22,7 +22,7 @@ echo "using gpu::" $CUDA_VISIBLE_DEVICES
 echo "${log_name} syntaxsql style - no hs fast ver onefrom!!!!"
 
 module=from
-epoch=600
+epoch=1000
 python train_from.py \
   --tqdm \
   --onefrom \

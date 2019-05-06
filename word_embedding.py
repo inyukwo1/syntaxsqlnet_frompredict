@@ -67,7 +67,8 @@ class WordEmbedding(nn.Module):
         B = len(q)
         val_embs = []
         table_embs = []
-        table_embs_len = np.zeros(B, dtype=np.int64)
+        join_num = []
+        table_embs_len = []
         val_len = np.zeros(B, dtype=np.int64)
         anses = []
         for idx, one_q in enumerate(q):
@@ -133,13 +134,16 @@ class WordEmbedding(nn.Module):
             # table_embs.append(one_table_embs)
             # table_embs_len[idx] = len(one_table_embs)
 
-            cols_seq = []
+            join_num.append(len(generated_graph))
             for table_num in generated_graph:
+                cols_seq = []
                 col_names = col_name_dict[table_num]
-                one_col_seq = table_name[table_num].split(" ")
-                cols_seq.append(one_col_seq)
-            table_embs_len[idx] = len(cols_seq)
-            table_embs += cols_seq
+                for col_name in col_names:
+                    one_col_seq = table_name[table_num].split(" ")
+                    one_col_seq += col_name.split(" ")
+                    cols_seq.append(one_col_seq)
+                table_embs_len.append(len(cols_seq))
+                table_embs += cols_seq
 
             val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [
                 np.zeros(self.N_word, dtype=np.float32)])  # <BEG> and <END>
@@ -159,7 +163,7 @@ class WordEmbedding(nn.Module):
             anses = anses.cuda()
         val_inp_var = Variable(val_inp)
 
-        return val_inp_var, val_len, table_embs_var, table_name_len, table_embs_len, anses
+        return val_inp_var, val_len, table_embs_var, join_num, table_name_len, table_embs_len, anses
 
     def gen_joingraph_eval_nobert(self, one_q, one_tables, one_cols, foreign_keys, primary_keys):
         parent_nums = []
@@ -179,7 +183,8 @@ class WordEmbedding(nn.Module):
         B = len(table_graph_lists)
         val_embs = []
         table_embs = []
-        table_embs_len = np.zeros(B, dtype=np.int64)
+        join_num = []
+        table_embs_len = []
         val_len = np.zeros(B, dtype=np.int64)
         for b in range(B):
             q_val = []
@@ -230,13 +235,16 @@ class WordEmbedding(nn.Module):
             # table_embs.append(one_table_embs)
             # table_embs_len[b] = len(one_table_embs)
 
-            cols_seq = []
+            join_num.append(len(generated_graph))
             for table_num in generated_graph:
+                cols_seq = []
                 col_names = col_name_dict[table_num]
-                one_col_seq = one_tables[table_num].split(" ")
-                cols_seq.append(one_col_seq)
-            table_embs_len[b] = len(cols_seq)
-            table_embs += cols_seq
+                for col_name in col_names:
+                    one_col_seq = one_tables[table_num].split(" ")
+                    one_col_seq += col_name.split(" ")
+                    cols_seq.append(one_col_seq)
+                table_embs_len.append(len(cols_seq))
+                table_embs += cols_seq
 
             val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [np.zeros(self.N_word, dtype=np.float32)])  # <BEG> and <END>
             val_len[b] = 1 + len(q_val) + 1
@@ -251,7 +259,7 @@ class WordEmbedding(nn.Module):
         if self.gpu:
             val_inp = val_inp.cuda()
         val_inp_var = Variable(val_inp)
-        return val_inp_var, val_len, table_embs_var, table_name_len, table_embs_len, simple_graph_lists, table_graph_lists
+        return val_inp_var, val_len, table_embs_var, join_num, table_name_len, table_embs_len, simple_graph_lists, table_graph_lists
 
 
     def gen_x_q_bert_batch(self, q):

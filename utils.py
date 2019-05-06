@@ -319,7 +319,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
         if use_lstm:
-            q_emb, q_len, table_emb, table_name_len, table_len, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+            q_emb, q_len, table_emb, join_num, table_name_len, table_len, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
             q_q_len = None
             sep_embeddings = None
         else:
@@ -327,8 +327,9 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             table_len = None
             table_name_len = None
             table_emb = None
+            join_num = None
 
-        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len, table_name_len)
+        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, join_num, table_len, table_name_len)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -376,7 +377,7 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
         for par_tab, _ in compound_table["column_names"]:
             parent_tables.append(par_tab)
         if use_lstm:
-            q_emb, q_len, table_emb, table_name_len, table_len, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+            q_emb, q_len, table_emb, join_num, table_name_len, table_len, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
             q_q_len = [0] * len(q_emb)
             sep_embeddings = [0] * len(q_emb)
         else:
@@ -384,21 +385,31 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
             table_emb = [0] * len(q_emb)
             table_name_len = [0] * len(q_emb)
             table_len = [0] * len(q_emb)
+            join_num = [0] * len(q_emb)
 
         st = 0
         tab_st = 0
+        col_st = 0
         b = len(q_emb)
         scores = []
         while st < b:
             ed = st + max_batch
             if ed >= b:
                 ed = b
+            tab_ed = tab_st
+            for i in range(st, ed, 1):
+                tab_ed += join_num[i]
+            col_ed = col_st
+            for i in range(tab_st, tab_ed, 1):
+                col_ed += table_len[i]
             history = [one_history] * (ed - st)
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-            score = model.forward(q_emb[st:ed], q_len[st:ed], q_q_len[st:ed], hs_emb_var, hs_len, sep_embeddings[st:ed], table_emb[st:ed], table_len[st:ed], table_name_len[st:ed])
+            score = model.forward(q_emb[st:ed], q_len[st:ed], q_q_len[st:ed], hs_emb_var, hs_len, sep_embeddings[st:ed], table_emb[col_st:col_ed], join_num[st:ed], table_len[tab_st:tab_ed], table_name_len[col_st:col_ed])
             score = score.data.cpu().numpy()
             scores.append(score)
             st = ed
+            tab_st = tab_ed
+            col_st = col_ed
         scores = np.concatenate(scores)
 
         correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, primary_keys, parent_tables, one_tab_names, one_cols, datum["question_tokens"])
