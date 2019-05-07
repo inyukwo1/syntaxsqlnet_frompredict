@@ -6,6 +6,70 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from models.net_utils import run_lstm, SIZE_CHECK
 from graph_utils import *
+from pytorch_pretrained_bert import *
+
+
+def position_encoding_init(n_position, emb_dim):
+    ''' Init the sinusoid position encoding table '''
+
+    # keep dim 0 for padding token position encoding zero vector
+    position_enc = np.array([
+        [pos / np.power(10000, 2 * (j // 2) / emb_dim) for j in range(emb_dim)]
+        if pos != 0 else np.zeros(emb_dim) for pos in range(n_position)])
+
+    position_enc[1:, 0::2] = np.sin(position_enc[1:, 0::2])  # apply sin on 0th,2nd,4th...emb_dim
+    position_enc[1:, 1::2] = np.cos(position_enc[1:, 1::2])  # apply cos on 1st,3rd,5th...emb_dim
+    return torch.from_numpy(position_enc).type(torch.FloatTensor)
+
+
+class BertConfig(object):
+    """Configuration class to store the configuration of a `BertModel`.
+    """
+    def __init__(self,
+                 hidden_size=768,
+                 num_hidden_layers=4,
+                 num_attention_heads=12,
+                 intermediate_size=3072,
+                 hidden_act="gelu",
+                 hidden_dropout_prob=0.1,
+                 attention_probs_dropout_prob=0.1,
+                 max_position_embeddings=512,
+                 type_vocab_size=2,
+                 initializer_range=0.02):
+        """Constructs BertConfig.
+
+        Args:
+            vocab_size_or_config_json_file: Vocabulary size of `inputs_ids` in `BertModel`.
+            hidden_size: Size of the encoder layers and the pooler layer.
+            num_hidden_layers: Number of hidden layers in the Transformer encoder.
+            num_attention_heads: Number of attention heads for each attention layer in
+                the Transformer encoder.
+            intermediate_size: The size of the "intermediate" (i.e., feed-forward)
+                layer in the Transformer encoder.
+            hidden_act: The non-linear activation function (function or string) in the
+                encoder and pooler. If string, "gelu", "relu" and "swish" are supported.
+            hidden_dropout_prob: The dropout probabilitiy for all fully connected
+                layers in the embeddings, encoder, and pooler.
+            attention_probs_dropout_prob: The dropout ratio for the attention
+                probabilities.
+            max_position_embeddings: The maximum sequence length that this model might
+                ever be used with. Typically set this to something large just in case
+                (e.g., 512 or 1024 or 2048).
+            type_vocab_size: The vocabulary size of the `token_type_ids` passed into
+                `BertModel`.
+            initializer_range: The sttdev of the truncated_normal_initializer for
+                initializing all weight matrices.
+        """
+        self.hidden_size = hidden_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.hidden_act = hidden_act
+        self.intermediate_size = intermediate_size
+        self.hidden_dropout_prob = hidden_dropout_prob
+        self.attention_probs_dropout_prob = attention_probs_dropout_prob
+        self.max_position_embeddings = max_position_embeddings
+        self.type_vocab_size = type_vocab_size
+        self.initializer_range = initializer_range
 
 
 def sql_graph_maker(tab_list, foreign_keys, parent_tables):
@@ -91,6 +155,9 @@ def graph_maker(tab_list, foreign_keys, parent_tables):
     return graph
 
 
+positional_encoding = position_encoding_init(1000, 300).cuda()
+
+
 class FromPredictor(nn.Module):
     def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert, onefrom, use_lstm=False):
         super(FromPredictor, self).__init__()
@@ -111,10 +178,12 @@ class FromPredictor(nn.Module):
         if self.onefrom:
             self.onefrom_vec = nn.Parameter(torch.zeros(N_h))
         if self.use_lstm:
-            self.main_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
-                                     num_layers=6, batch_first=True,
-                                     dropout=0.3, bidirectional=True)
-            self.encoded_num = N_h
+            tempbert = BertModel.from_pretrained("bert-base-uncased")
+            tempbert.config.hidden_size = 300
+            tempbert.config.max_position_embeddings = 1000
+            tempbert.config.num_hidden_layers = 3
+            self.bert = BertModel(tempbert.config)
+            self.encoded_num = 300
 
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
@@ -124,7 +193,15 @@ class FromPredictor(nn.Module):
     def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings):
         B = len(q_len)
         if self.use_lstm:
-            q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
+            _, max_q_len, _ = list(q_emb.size())
+            q_emb = q_emb + positional_encoding.unsqueeze(0)[:, :max_q_len, :]
+            attention_mask = np.zeros((B, 1, 1, max_q_len), dtype=np.float32)
+            for b, q in enumerate(q_len):
+                if q < max(q_len):
+                    attention_mask[b, 0, 0, q:] -= 10000.0
+            attention_mask = torch.from_numpy(attention_mask).cuda()
+            q_enc = self.bert.encoder(q_emb, attention_mask, False)[-1]
+
         else:
             q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
@@ -161,27 +238,27 @@ class FromPredictor(nn.Module):
 
     def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, primary_keys, parent_tables, table_names, column_names, question):
         table_num_ed = len(table_names)
-        for predicted_graph, sc in zip(table_graph_list, score):
-            print("$$$$$$$$$$$$$$$$$")
-            print(predicted_graph)
-            print("~~~~~")
-            print(sc)
+        # for predicted_graph, sc in zip(table_graph_list, score):
+        #     print("$$$$$$$$$$$$$$$$$")
+        #     print(predicted_graph)
+        #     print("~~~~~")
+        #     print(sc)
         correct = False
 
         selected_graph = table_graph_list[np.argmax(score)]
         graph_correct = graph_checker(selected_graph, graph, foreign_keys, primary_keys)
-        print("#### " + " ".join(question))
-        for idx, table_name in enumerate(table_names):
-            print("Table {}: {}".format(idx, table_name))
-            for col_idx, [par_tab, col_name] in enumerate(column_names):
-                if par_tab == idx:
-                    print("   {}: {}".format(col_idx, col_name))
-
-        print("=======")
-        print(selected_graph)
-        print("========")
-        print(graph)
-        print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
+        # print("#### " + " ".join(question))
+        # for idx, table_name in enumerate(table_names):
+        #     print("Table {}: {}".format(idx, table_name))
+        #     for col_idx, [par_tab, col_name] in enumerate(column_names):
+        #         if par_tab == idx:
+        #             print("   {}: {}".format(col_idx, col_name))
+        #
+        # print("=======")
+        # print(selected_graph)
+        # print("========")
+        # print(graph)
+        # print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
         return graph_correct
 
     def score_to_tables(self, score, foreign_keys, parent_tables):

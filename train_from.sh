@@ -4,7 +4,7 @@
  hs=full
  tbl=std
  d_type="_augment_from"
- log_name="trial283"
+ log_name="trial2-ranseed2074-3layer"
 
 
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
@@ -16,15 +16,16 @@ mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=5
 
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "${log_name} no namechange!!"
+echo "${log_name} bert like!!"
 
 module=from
-epoch=600
+epoch=1000
 python train_from.py \
   --tqdm \
+  --use_lstm \
   --data_root    ${data_root} \
   --save_dir     ${save_dir} \
   --epoch        ${epoch} \
