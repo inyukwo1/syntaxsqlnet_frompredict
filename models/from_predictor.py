@@ -115,7 +115,8 @@ class FromPredictor(nn.Module):
                                      num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
             self.q_att = nn.Linear(N_h, N_h)
-            self.q_out = nn.Linear(N_h, N_h)
+            self.q_att1 = nn.Linear(N_h, N_h)
+            self.q_out = nn.Linear(2 * N_h, N_h)
             self.table_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                                      num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
@@ -123,6 +124,13 @@ class FromPredictor(nn.Module):
             self.table_onemore_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                                      num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
+            self.col_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h // 2,
+                                      num_layers=N_depth, batch_first=True,
+                                      dropout=0.3, bidirectional=True)
+
+            self.col_onemore_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h // 2,
+                                              num_layers=N_depth, batch_first=True,
+                                              dropout=0.3, bidirectional=True)
             self.encoded_num = N_h
             self.q_score_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 1))
 
@@ -131,7 +139,9 @@ class FromPredictor(nn.Module):
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb=None, table_len=None, table_name_len=None):
+    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings,
+                table_emb=None, table_len=None, table_name_len=None,
+                col_emb=None, col_len=None, col_name_len=None):
         B = len(q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
@@ -139,11 +149,15 @@ class FromPredictor(nn.Module):
             q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
             t_enc, _ = col_tab_name_encode(table_emb, table_name_len, table_len, self.table_lstm)
             t_enc, _ = run_lstm(self.table_onemore_lstm, t_enc, table_len)
+            c_enc, _ = col_tab_name_encode(col_emb, col_name_len, col_len, self.col_lstm)
+            c_enc, _ = run_lstm(self.col_onemore_lstm, c_enc, col_len)
 
             q_weighted_num = seq_conditional_weighted_num(self.q_att, q_enc, q_len, t_enc, table_len).sum(1)
+            q_weighted_num1 = seq_conditional_weighted_num(self.q_att1, q_enc, q_len, c_enc, col_len).sum(1)
             SIZE_CHECK(q_weighted_num, [B, self.N_h])
-            q_weighted_num = self.q_out(q_weighted_num)
-            x = self.q_score_out(q_weighted_num).squeeze(1)
+            x = torch.cat((q_weighted_num, q_weighted_num1), dim=1)
+            x = self.q_out(x)
+            x = self.q_score_out(x).squeeze(1)
             return x
         else:
             q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)

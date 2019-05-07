@@ -9,7 +9,7 @@ import sys
 
 def SIZE_CHECK(tensor, size):
     for idx, dim in enumerate(size):
-        if dim is None:
+        if dim is None or dim == -1:
             size[idx] = list(tensor.size())[idx]
     if list(tensor.size()) != size:
         print("tensor size: {}, expected {}".format(list(tensor.size()), size), file=sys.stderr)

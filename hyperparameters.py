@@ -1,5 +1,5 @@
 H_PARAM = {
-    "random_seed": 2085,
+    "random_seed": 2086,
     "batch_size": 16,
     "bert_learning_rate": 1e-5,
     "learning_rate": 1e-4,
