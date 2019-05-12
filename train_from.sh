@@ -4,7 +4,7 @@
  hs=full
  tbl=std
  d_type="_augment_from"
- log_name="trial1"
+ log_name="trial3-gcn"
 
 
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
@@ -16,10 +16,10 @@ mkdir -p ${save_dir}
 mkdir -p ${log_dir}
 
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=6
 
 echo "using gpu::" $CUDA_VISIBLE_DEVICES
-echo "${log_name} table encode + col encode!!!!"
+echo "${log_name} !!!!"
 
 module=from
 epoch=1000

@@ -319,7 +319,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
         if use_lstm:
-            q_emb, q_len, col_emb, col_name_len, col_len, table_emb, table_name_len, table_len, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+            q_emb, q_len, col_emb, col_name_len, col_len, table_emb, table_name_len, table_len, ret_parent_nums, ret_foreign_keys, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
             q_q_len = None
             sep_embeddings = None
         else:
@@ -328,7 +328,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             table_name_len = None
             table_emb = None
 
-        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len, table_name_len, col_emb, col_len, col_name_len)
+        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len, table_name_len, col_emb, col_len, col_name_len, ret_parent_nums, ret_foreign_keys)
         loss = model.loss(score, label)
 
         err = model.check_acc(score, label)
@@ -376,7 +376,7 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
         for par_tab, _ in compound_table["column_names"]:
             parent_tables.append(par_tab)
         if use_lstm:
-            q_emb, q_len, col_emb, col_name_len, col_len, table_emb, table_name_len, table_len, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
+            q_emb, q_len, col_emb, col_name_len, col_len, table_emb, table_name_len, table_len, ret_parent_nums, ret_foreign_keys, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
             q_q_len = [0] * len(q_emb)
             sep_embeddings = [0] * len(q_emb)
         else:
@@ -403,7 +403,7 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
             hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
             score = model.forward(q_emb[st:ed], q_len[st:ed], q_q_len[st:ed], hs_emb_var, hs_len, sep_embeddings[st:ed],
                                   table_emb[tab_st:tab_ed], table_len[st:ed], table_name_len[tab_st:tab_ed],
-                                  col_emb[col_st:col_ed], col_len[st:ed], col_name_len[col_st:col_ed])
+                                  col_emb[col_st:col_ed], col_len[st:ed], col_name_len[col_st:col_ed], ret_parent_nums[st:ed], ret_foreign_keys[st:ed])
             score = score.data.cpu().numpy()
             scores.append(score)
             st = ed

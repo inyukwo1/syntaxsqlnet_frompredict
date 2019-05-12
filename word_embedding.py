@@ -71,6 +71,8 @@ class WordEmbedding(nn.Module):
         col_embs = []
         col_embs_len = np.zeros(B, dtype=np.int64)
         val_len = np.zeros(B, dtype=np.int64)
+        ret_parent_nums = []
+        ret_foreign_keys = []
         anses = []
         for idx, one_q in enumerate(q):
             parent_tables = []
@@ -106,9 +108,9 @@ class WordEmbedding(nn.Module):
                             for f, p in foreign_keys:
                                 if parent_tables[f] in generated_graph and f in generated_graph[parent_tables[f]] and p == col_idx:
                                     renamed_table_cols[f][1] = col_name
-                        col_name_dict[par_tab].append(col_name)
+                        col_name_dict[par_tab].append((col_idx, col_name))
                     else:
-                        col_name_dict[par_tab].append(col_name)
+                        col_name_dict[par_tab].append((col_idx, col_name))
 
             # one_batch_table_embs = []
             # one_batch_table_len = []
@@ -137,17 +139,29 @@ class WordEmbedding(nn.Module):
 
             tabs_seq = []
             cols_seq = []
-            for table_num in generated_graph:
+            one_parent_nums = []
+            col_renumber_dict = {}
+            col_idx = 0
+            for par_idx, table_num in enumerate(generated_graph):
                 col_names = col_name_dict[table_num]
-                for col_name in col_names:
+                for c_idx, col_name in col_names:
                     one_col_seq = col_name.split(" ")
                     cols_seq.append(one_col_seq)
+                    one_parent_nums.append(par_idx)
+                    col_renumber_dict[c_idx] = col_idx
+                    col_idx += 1
                 one_tab_seq = table_name[table_num].split(" ")
                 tabs_seq.append(one_tab_seq)
+            new_one_foreign_keys = []
+            for f, p in foreign_keys[idx]:
+                if f in col_renumber_dict and p in col_renumber_dict:
+                    new_one_foreign_keys.append([col_renumber_dict[f], col_renumber_dict[p]])
+            ret_foreign_keys.append(new_one_foreign_keys)
             col_embs_len[idx] = len(cols_seq)
             col_embs += cols_seq
             table_embs_len[idx] = len(tabs_seq)
             table_embs += tabs_seq
+            ret_parent_nums.append(one_parent_nums)
 
             val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [
                 np.zeros(self.N_word, dtype=np.float32)])  # <BEG> and <END>
@@ -168,7 +182,7 @@ class WordEmbedding(nn.Module):
             anses = anses.cuda()
         val_inp_var = Variable(val_inp)
 
-        return val_inp_var, val_len, col_embs_var, col_name_len, col_embs_len, table_embs_var, table_name_len, table_embs_len, anses
+        return val_inp_var, val_len, col_embs_var, col_name_len, col_embs_len, table_embs_var, table_name_len, table_embs_len, ret_parent_nums, ret_foreign_keys, anses
 
     def gen_joingraph_eval_nobert(self, one_q, one_tables, one_cols, foreign_keys, primary_keys):
         parent_nums = []
@@ -192,6 +206,8 @@ class WordEmbedding(nn.Module):
         col_embs = []
         col_embs_len = np.zeros(B, dtype=np.int64)
         val_len = np.zeros(B, dtype=np.int64)
+        ret_parent_nums = []
+        ret_foreign_keys = []
         for b in range(B):
             q_val = []
             for ws in one_q:
@@ -211,9 +227,9 @@ class WordEmbedding(nn.Module):
                             for f, p in foreign_keys:
                                 if parent_nums[f] in generated_graph and f in generated_graph[parent_nums[f]] and p == col_idx:
                                     renamed_table_cols[f][1] = col_name
-                        col_name_dict[par_tab].append(col_name)
+                        col_name_dict[par_tab].append((col_idx, col_name))
                     else:
-                        col_name_dict[par_tab].append(col_name)
+                        col_name_dict[par_tab].append((col_idx, col_name))
 
             # one_batch_table_embs = []
             # one_batch_table_len = []
@@ -243,17 +259,29 @@ class WordEmbedding(nn.Module):
 
             tabs_seq = []
             cols_seq = []
-            for table_num in generated_graph:
+            one_parent_nums = []
+            col_renumber_dict = {}
+            col_idx = 0
+            for par_idx, table_num in enumerate(generated_graph):
                 col_names = col_name_dict[table_num]
-                for col_name in col_names:
+                for c_idx, col_name in col_names:
                     one_col_seq = col_name.split(" ")
                     cols_seq.append(one_col_seq)
+                    one_parent_nums.append(par_idx)
+                    col_renumber_dict[c_idx] = col_idx
+                    col_idx += 1
                 one_tab_seq = one_tables[table_num].split(" ")
                 tabs_seq.append(one_tab_seq)
+            new_one_foreign_keys = []
+            for f, p in foreign_keys:
+                if f in col_renumber_dict and p in col_renumber_dict:
+                    new_one_foreign_keys.append([col_renumber_dict[f], col_renumber_dict[p]])
+            ret_foreign_keys.append(new_one_foreign_keys)
             col_embs_len[b] = len(cols_seq)
             col_embs += cols_seq
             table_embs_len[b] = len(tabs_seq)
             table_embs += tabs_seq
+            ret_parent_nums.append(one_parent_nums)
 
             val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [np.zeros(self.N_word, dtype=np.float32)])  # <BEG> and <END>
             val_len[b] = 1 + len(q_val) + 1
@@ -270,7 +298,7 @@ class WordEmbedding(nn.Module):
         if self.gpu:
             val_inp = val_inp.cuda()
         val_inp_var = Variable(val_inp)
-        return val_inp_var, val_len, col_embs_var, col_name_len, col_embs_len, table_embs_var, table_name_len, table_embs_len, simple_graph_lists, table_graph_lists
+        return val_inp_var, val_len, col_embs_var, col_name_len, col_embs_len, table_embs_var, table_name_len, table_embs_len, ret_parent_nums, ret_foreign_keys, simple_graph_lists, table_graph_lists
 
 
     def gen_x_q_bert_batch(self, q):

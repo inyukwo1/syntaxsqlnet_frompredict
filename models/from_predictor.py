@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from models.net_utils import run_lstm, SIZE_CHECK, seq_conditional_weighted_num, col_tab_name_encode
+from models.schema_encoder import SchemaEncoder
 from graph_utils import *
 
 
@@ -117,20 +118,7 @@ class FromPredictor(nn.Module):
             self.q_att = nn.Linear(N_h, N_h)
             self.q_att1 = nn.Linear(N_h, N_h)
             self.q_out = nn.Linear(2 * N_h, N_h)
-            self.table_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
-                                     num_layers=N_depth, batch_first=True,
-                                     dropout=0.3, bidirectional=True)
-
-            self.table_onemore_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
-                                     num_layers=N_depth, batch_first=True,
-                                     dropout=0.3, bidirectional=True)
-            self.col_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h // 2,
-                                      num_layers=N_depth, batch_first=True,
-                                      dropout=0.3, bidirectional=True)
-
-            self.col_onemore_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h // 2,
-                                              num_layers=N_depth, batch_first=True,
-                                              dropout=0.3, bidirectional=True)
+            self.joingraph_encoder = SchemaEncoder(N_word, N_h, N_h)
             self.encoded_num = N_h
             self.q_score_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 1))
 
@@ -141,16 +129,13 @@ class FromPredictor(nn.Module):
 
     def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings,
                 table_emb=None, table_len=None, table_name_len=None,
-                col_emb=None, col_len=None, col_name_len=None):
+                col_emb=None, col_len=None, col_name_len=None, parent_nums=None, foreign_keys=None):
         B = len(q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         if self.use_lstm:
             q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
-            t_enc, _ = col_tab_name_encode(table_emb, table_name_len, table_len, self.table_lstm)
-            t_enc, _ = run_lstm(self.table_onemore_lstm, t_enc, table_len)
-            c_enc, _ = col_tab_name_encode(col_emb, col_name_len, col_len, self.col_lstm)
-            c_enc, _ = run_lstm(self.col_onemore_lstm, c_enc, col_len)
+            t_enc, c_enc, _ = self.joingraph_encoder(parent_nums, foreign_keys, col_emb, col_name_len, col_len, table_emb, table_name_len, table_len)
 
             q_weighted_num = seq_conditional_weighted_num(self.q_att, q_enc, q_len, t_enc, table_len).sum(1)
             q_weighted_num1 = seq_conditional_weighted_num(self.q_att1, q_enc, q_len, c_enc, col_len).sum(1)
