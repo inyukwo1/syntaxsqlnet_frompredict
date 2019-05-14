@@ -78,6 +78,58 @@ class WordEmbedding(nn.Module):
             tokenized_q = tokenized_q.cuda()
         return tokenized_q, q_len
 
+    def encode_one_q_with_wikisql_like_bert(self, one_q, table_name, table_cols):
+        table_sep_nums = []
+        table_sep_cnt = 0
+        input_q = "[CLS] " + " ".join(one_q)
+        one_q_q_len = len(self.bert_tokenizer.tokenize(input_q))
+        for tab_num, tab_name in enumerate(table_name):
+            input_q += " [SEP] " + table_name[tab_num]
+            table_sep_nums.append(table_sep_cnt)
+            table_sep_cnt += 1
+            # for col_idx, [par_tab, col_name] in enumerate(table_cols):
+            #     if par_tab == tab_num:
+            #         input_q += " [SEP] " + col_name
+            #         table_sep_cnt += 1
+
+        tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
+        indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
+
+        table_indices = []
+        cur_sep_cnt = -1
+        for token_idx, token in enumerate(tokenozed_one_q):
+            if token == '[SEP]':
+                cur_sep_cnt += 1
+                if cur_sep_cnt in table_sep_nums:
+                    table_indices.append(token_idx)
+        return one_q_q_len, indexed_one_q, table_indices
+
+    def gen_wikisql_bert_batch_with_table(self, q, tables, table_cols):
+        tokenized_q = []
+
+        q_len = []
+        q_q_len = []
+        tab_locations = []
+        for idx, one_q in enumerate(q):
+            parent_tables = []
+            for t, c in table_cols[idx]:
+                parent_tables.append(t)
+
+            one_q_q_len, indexed_one_q, one_tab_indices \
+                = self.encode_one_q_with_wikisql_like_bert(one_q, tables[idx], table_cols[idx])
+            q_q_len.append(one_q_q_len)
+            tokenized_q.append(indexed_one_q)
+            q_len.append(len(indexed_one_q))
+            tab_locations.append(one_tab_indices)
+
+        max_len = max(q_len)
+        for tokenized_one_q in tokenized_q:
+            tokenized_one_q += [0] * (max_len - len(tokenized_one_q))
+        tokenized_q = torch.LongTensor(tokenized_q)
+        if self.gpu:
+            tokenized_q = tokenized_q.cuda()
+        return tokenized_q, q_len, q_q_len, tab_locations
+
     def encode_one_q_with_bert(self, one_q, table_name, table_cols, parent_tables, foreign_keys, primary_keys, table_graph):
         input_q = "[CLS] " + " ".join(one_q)
         one_q_q_len = len(self.bert_tokenizer.tokenize(input_q))

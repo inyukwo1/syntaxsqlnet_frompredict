@@ -8,6 +8,31 @@ from models.net_utils import run_lstm, SIZE_CHECK
 from graph_utils import *
 
 
+def graph_maker_joincondition(tab_list, foreign_keys, parent_tables, label):
+    graph = {}
+    for tab in tab_list:
+        graph[tab] = []
+    for tab in tab_list:
+        if graph[tab]:
+            continue
+        for f, p in foreign_keys:
+            if parent_tables[f] == tab and parent_tables[p] in tab_list:
+                label_tab = str(tab)
+                label_tab1 = str(parent_tables[p])
+                if label_tab in label and f in label[label_tab] and label_tab1 in label and p in label[label_tab1]:
+                    graph[tab].append(f)
+                    graph[parent_tables[p]].append(p)
+                    break
+            elif parent_tables[p] == tab and parent_tables[f] in tab_list:
+                label_tab = str(tab)
+                label_tab1 = str(parent_tables[f])
+                if label_tab in label and p in label[label_tab] and label_tab1 in label and f in label[label_tab1]:
+                    graph[tab].append(p)
+                    graph[parent_tables[f]].append(f)
+                    break
+    return graph
+
+
 def sql_graph_maker(tab_list, foreign_keys, parent_tables):
     graph = {}
     for tab in tab_list:
@@ -19,43 +44,45 @@ def sql_graph_maker(tab_list, foreign_keys, parent_tables):
             if parent_tables[f] == tab and parent_tables[p] in tab_list:
                 graph[tab].append((f, p, parent_tables[p]))
                 graph[parent_tables[p]].append((p, f, tab))
+                break
             elif parent_tables[p] == tab and parent_tables[f] in tab_list:
                 graph[tab].append((p, f, parent_tables[f]))
                 graph[parent_tables[f]].append((f, p, tab))
-
-    def unreachable(graph, t):
-        reached = set()
-        reached.add(t)
-        added = True
-        while added:
-            added = False
-            for tab in graph:
-                for edge in graph[tab]:
-                    if edge[2] in reached and tab not in reached:
-                        reached.add(tab)
-                        added = True
-                    if tab in reached and edge[2] not in reached:
-                        reached.add(edge[2])
-                        added = True
-        for tab in graph:
-            if tab not in reached:
-                return True
-        return False
-
-    while len(graph) > 1: # TODO pop lower score first
-        delete = False
-        for t in graph:
-            if unreachable(graph, t):
-                delete = True
                 break
-        if not delete:
-            break
-        graph.pop(t)
-        for another_t in graph:
-            for edge in graph[another_t]:
-                if edge[2] == t:
-                    graph[another_t].remove(edge)
-                    break
+
+    # def unreachable(graph, t):
+    #     reached = set()
+    #     reached.add(t)
+    #     added = True
+    #     while added:
+    #         added = False
+    #         for tab in graph:
+    #             for edge in graph[tab]:
+    #                 if edge[2] in reached and tab not in reached:
+    #                     reached.add(tab)
+    #                     added = True
+    #                 if tab in reached and edge[2] not in reached:
+    #                     reached.add(edge[2])
+    #                     added = True
+    #     for tab in graph:
+    #         if tab not in reached:
+    #             return True
+    #     return False
+    #
+    # while len(graph) > 1: # TODO pop lower score first
+    #     delete = False
+    #     for t in graph:
+    #         if unreachable(graph, t):
+    #             delete = True
+    #             break
+    #     if not delete:
+    #         break
+    #     graph.pop(t)
+    #     for another_t in graph:
+    #         for edge in graph[another_t]:
+    #             if edge[2] == t:
+    #                 graph[another_t].remove(edge)
+    #                 break
     return graph
 
 
@@ -91,8 +118,91 @@ def graph_maker(tab_list, foreign_keys, parent_tables):
     return graph
 
 
+class WikiSQLNum(nn.Module):
+    def __init__(self):
+        super(WikiSQLNum, self).__init__()
+        self.tab_lstm = nn.LSTM(input_size=100, hidden_size=100//2,
+                num_layers=2, batch_first=True,
+                dropout=0.3, bidirectional=True)
+        self.tab_self_attention = nn.Linear(100, 1)
+        self.tab_hidden = nn.Linear(100, 2 * 100)
+        self.tab_cell = nn.Linear(100, 2 * 100)
+        self.q_lstm = nn.LSTM(input_size=100, hidden_size=100//2,
+                num_layers=2, batch_first=True,
+                dropout=0.3, bidirectional=True)
+        self.q_self_attention = nn.Linear(100, 1)
+        self.num_out = nn.Sequential(nn.Linear(100, 100),
+                                     nn.Tanh(),
+                                     nn.Linear(100, 4))  # max number (4 + 1)
+
+    def forward(self, q_embs, q_len, tab_embs, tab_len):
+        B = len(q_len)
+        tab_enc, _ = run_lstm(self.tab_lstm, tab_embs, tab_len)
+
+        tab_att = self.tab_self_attention(tab_enc).squeeze(2)
+        for b, one_tab_len in enumerate(tab_len):
+            if one_tab_len < max(tab_len):
+                tab_att[b, one_tab_len:] = -1000
+        tab_att = F.softmax(tab_att, dim=1)
+        attentioned_tab_enc = torch.mul(tab_enc, tab_att.unsqueeze(2)).sum(1)
+        SIZE_CHECK(attentioned_tab_enc, [B, 100])
+        hidden0 = self.tab_hidden(attentioned_tab_enc)
+        hidden0 = hidden0.view(100, 2 * 2, 100 // 2)
+        hidden0 = hidden0.transpose(0, 1).contiguous()
+        cell0 = self.tab_cell(attentioned_tab_enc)
+        cell0 = cell0.view(100, 2 * 2, 100 // 2)
+        cell0 = cell0.transpose(0, 1).contiguous()
+
+        q_enc, _ = run_lstm(self.q_lstm, q_embs, q_len, (hidden0, cell0))
+        q_att = self.q_self_attention(q_enc).squeeze(2)
+        for b, one_q_len in enumerate(q_len):
+            if one_q_len < max(q_len):
+                q_att[b, one_q_len:] = -1000
+        q_att = F.softmax(q_att, dim=1)
+        attentioned_q_enc = torch.mul(q_enc, q_att.unsqueeze(2)).sum(1)
+        num = self.num_out(attentioned_q_enc)
+        return num
+
+
+class WikiSQLCol(nn.Module):
+    def __init__(self):
+        super(WikiSQLCol, self).__init__()
+        self.q_lstm = nn.LSTM(input_size=100, hidden_size=100//2,
+                num_layers=2, batch_first=True,
+                dropout=0.3, bidirectional=True)
+        self.tab_lstm = nn.LSTM(input_size=100, hidden_size=100//2,
+                num_layers=2, batch_first=True,
+                dropout=0.3, bidirectional=True)
+        self.coatt = nn.Linear(100, 100)
+        self.W_c = nn.Linear(100, 100)
+        self.W_hs = nn.Linear(100, 100)
+        self.W_out = nn.Sequential(
+            nn.Tanh(), nn.Linear(2 * 100, 1)
+        )
+
+    def forward(self, q_embs, q_len, tab_embs, tab_len):
+        B = len(q_len)
+        q_enc, _ = run_lstm(self.q_lstm, q_embs, q_len)
+        tab_enc, _ = run_lstm(self.tab_lstm, tab_embs, tab_len)
+        att = torch.bmm(tab_enc, self.coatt(q_enc).transpose(1, 2))
+        for b, one_q_len in enumerate(q_len):
+            if one_q_len < max(q_len):
+                att[b, :, one_q_len:] = -1000
+        att = F.softmax(att, dim=2).unsqueeze(3)
+        q_enc = q_enc.unsqueeze(1)
+        c_n = torch.mul(q_enc, att).sum(2)
+
+        y = torch.cat([self.W_c(c_n), self.W_hs(tab_enc)], dim=2)
+        score = self.W_out(y).squeeze(2)
+        for b, one_tab_len in enumerate(tab_len):
+            if one_tab_len < max(tab_len):
+                score[b, one_tab_len:] = -1000
+
+        return score
+
+
 class FromPredictor(nn.Module):
-    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert, onefrom):
+    def __init__(self, N_word, N_h, N_depth, gpu, use_hs, bert, onefrom, wikisql_style=False):
         super(FromPredictor, self).__init__()
         self.N_h = N_h
         self.gpu = gpu
@@ -101,6 +211,7 @@ class FromPredictor(nn.Module):
 
         self.q_bert = bert
         self.onefrom = onefrom
+        self.wikisql_style = wikisql_style
         self.encoded_num = 1024
 
         self.hs_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
@@ -109,19 +220,41 @@ class FromPredictor(nn.Module):
 
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
+        if self.wikisql_style:
+            # self.from_num = WikiSQLNum()
+            # self.from_cols = WikiSQLCol()
+            self.w_num = nn.Linear(self.encoded_num, 4)
         if self.onefrom:
             self.onefrom_vec = nn.Parameter(torch.zeros(N_h))
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings):
+    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, tab_locations=None):
         B = len(q_len)
 
         q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
+        if tab_locations:
+            tab_num_enc = self.w_num(q_enc[:, 0, :])
+
+            tab_lens = [len(x) for x in tab_locations]
+            new_q_enc = []
+            for b, one_tab_locations in enumerate(tab_locations):
+                one_q_enc = []
+                for i in range(max(tab_lens)):
+                    if i < len(one_tab_locations):
+                        one_q_enc.append(q_enc[b, one_tab_locations[i]])
+                    else:
+                        padding = torch.zeros_like(q_enc[0, 0]) - 100
+                        one_q_enc.append(padding)
+                one_q_enc = torch.stack(one_q_enc)
+                new_q_enc.append(one_q_enc)
+            new_q_enc = torch.stack(new_q_enc)
+            return tab_num_enc, new_q_enc[:, :, 7]
+
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
         hs_enc = hs_enc[:, 0, :]
         if self.onefrom:
-            hs_enc = self.onefrom_vec.view(1, -1).expand(B,  -1)
+            hs_enc = self.onefrom_vec.view(1, -1).expand(B, -1)
 
         q_enc = q_enc[:, 0, :]
         q_enc = torch.cat((q_enc, hs_enc), dim=1)
@@ -130,10 +263,55 @@ class FromPredictor(nn.Module):
         return x
 
     def loss(self, score, labels):
+        if self.wikisql_style:
+            num_score, tab_score = score
+            nums = []
+            for label in labels:
+                if len(label) <= 4:
+                    nums.append(len(label) - 1)
+                else:
+                    nums.append(3)
+            nums = torch.tensor(nums)
+
+            if torch.cuda.is_available():
+                nums = nums.cuda()
+            num_score = F.sigmoid(num_score)
+            num_loss = F.cross_entropy(num_score, nums)
+            tabs = torch.zeros_like(tab_score)
+            for b, one_labels in enumerate(labels):
+                for t in one_labels:
+                    tabs[b, int(t)] = 1
+            tab_loss = F.binary_cross_entropy_with_logits(tab_score, tabs)
+            return num_loss + tab_loss
+
         loss = F.binary_cross_entropy_with_logits(score, labels)
         return loss
 
     def check_acc(self, score, truth):
+        if self.wikisql_style:
+            num_err = 0
+            err = 0
+            num_score, score = score
+            if self.gpu:
+                num_score = num_score.cpu()
+                num_score = num_score.data
+                num_score = num_score.numpy()
+                score = score.data.cpu().numpy()
+            else:
+                num_score = num_score.data.numpy()
+                score = score.data.numpy()
+            for b in range(len(truth)):
+                if len(truth[b]) != np.argmax(num_score[b]) + 1:
+                    num_err += 1
+                sel_tabs = np.argsort(-score[b])[:len(truth[b])]
+                wrong = False
+                for t in truth[b]:
+                    if int(t) not in sel_tabs:
+                        wrong = True
+                if wrong:
+                    err += 1
+            return num_err, err
+
         err = 0
         B = len(truth)
         pred = []
@@ -149,6 +327,40 @@ class FromPredictor(nn.Module):
             elif score[b]<= 0. and truth[b] > 0.5:
                 err += 1
         return np.array(err)
+
+    def wikisql_acc(self, num_score, tab_score, label, tables):
+        if self.gpu:
+            num_score = torch.tanh(num_score).data.cpu().numpy()
+            tab_score = torch.tanh(tab_score).data.cpu().numpy()
+        else:
+            num_score = torch.tanh(num_score).data.numpy()
+            tab_score = torch.tanh(tab_score).data.numpy()
+        tabs = []
+        for b in range(len(num_score)):
+            print("number score: {}".format(num_score[b]))
+            print("tab score: {}".format(tab_score[b]))
+            print("label: {}".format(label[b]))
+            num_tab = np.argmax(num_score[b]) + 1
+            tabs.append(np.argsort(-tab_score[b])[:num_tab])
+        foreign_keys = []
+        primary_keys = []
+        parent_nums = []
+        for table in tables:
+            foreign_keys.append(table["foreign_keys"])
+            primary_keys.append(table["primary_keys"])
+            parent_nums.append([par_num for par_num, _ in table["column_names"]])
+        err_num = 0.
+        tab_err_num = 0.
+        for b in range(len(num_score)):
+            predict_graph = graph_maker(tabs[b], foreign_keys[b], parent_nums[b])
+            correct_joincond_graph = graph_maker_joincondition(tabs[b], foreign_keys[b], parent_nums[b], label[b])
+            correct = graph_checker(predict_graph, label[b], foreign_keys[b], primary_keys[b])
+            if not correct:
+                err_num += 1.
+            tab_correct = graph_checker(correct_joincond_graph, label[b], foreign_keys[b], primary_keys[b])
+            if not tab_correct:
+                tab_err_num += 1.
+        return err_num, tab_err_num
 
     def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, primary_keys, parent_tables, table_names, column_names, question):
         table_num_ed = len(table_names)
@@ -175,11 +387,13 @@ class FromPredictor(nn.Module):
         print("@@@@@@@@@@@@@@{}, {}".format(correct, graph_correct))
         return graph_correct
 
-    def score_to_tables(self, score, foreign_keys, parent_tables):
+    def score_to_tables(self, num_score, tab_score, foreign_keys, parent_tables):
         if self.gpu:
-            score = torch.tanh(score).data.cpu().numpy()
+            num_score = torch.tanh(num_score).data.cpu().numpy()
+            tab_score = torch.tanh(tab_score).data.cpu().numpy()
         else:
-            score = torch.tanh(score).data.numpy()
+            num_score = torch.tanh(num_score).data.numpy()
+            tab_score = torch.tanh(tab_score).data.numpy()
         tabs = []
 
         for b in range(len(score)):

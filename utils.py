@@ -306,7 +306,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
     return cum_loss / len(data)
 
 
-def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data, use_tqdm, bert_model):
+def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data, use_tqdm, bert_model, wikisql_style=False):
     model.train()
     newdata = []
     for entry in data:
@@ -317,6 +317,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
     st = 0
+    total_num_err = 0
     total_err = 0
 
     for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
@@ -332,15 +333,27 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             cols.append(data[perm[i]]["ts"][1])
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
-        q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+        if wikisql_style:
+            q_emb, q_len, q_q_len, tab_locations = embed_layer.gen_wikisql_bert_batch_with_table(q_seq, tabs, cols)
+            sep_embeddings = None
+            num_score, tab_score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, tab_locations)
+            score = [num_score, tab_score]
+            loss = model.loss(score, label)
 
-        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings)
-        loss = model.loss(score, label)
+            num_err, err = model.check_acc(score, label)
+            total_num_err += num_err
+            total_err += err
 
-        err = model.check_acc(score, label)
-        total_err += err
+        else:
+            q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+            tab_locations = None
+            score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, tab_locations)
+            loss = model.loss(score, label)
 
-        # print("loss {}".format(loss.data.cpu().numpy()))
+            err = model.check_acc(score, label)
+            total_err += err
+
+            # print("loss {}".format(loss.data.cpu().numpy()))
         if gpu:
             cum_loss += loss.data.cpu().numpy()*(ed - st)
         else:
@@ -353,8 +366,46 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
 
         st = ed
     print(("Train FROM {} acc total acc: {}".format(is_onefrom, 1 - total_err * 1.0 / len(data))), flush=True)
+    print(("Train FROM {} num acc: {}".format(is_onefrom, 1 - total_num_err * 1.0 / len(data))), flush=True)
 
     return cum_loss / len(data)
+
+
+def from_acc_wikisql_style(model, embed_layer, data, batch_size):
+    model.eval()
+
+    perm = list(range(len(data)))
+    total_err = 0.0
+    graph_err = 0.0
+    st = 0
+    print(("dev data size {}".format(len(data))))
+    table_dict = get_table_dict("./data/tables.json")
+    dev_db_ids = set()
+    for datum in data:
+        dev_db_ids.add(datum["ts"][5])
+
+    for _ in tqdm.tqdm(range(len(data) // batch_size)):
+        ed = st+batch_size if st+batch_size < len(perm) else len(perm)
+
+        q_seq, history, label = to_batch_seq(data, perm, st, ed)
+        tabs = []
+        cols = []
+        tables = []
+        for i in range(st, ed):
+            tabs.append(data[perm[i]]['ts'][0])
+            cols.append(data[perm[i]]["ts"][1])
+            tables.append(table_dict[data[perm[i]]['ts'][5]])
+        q_emb, q_len, q_q_len, tab_locations = embed_layer.gen_wikisql_bert_batch_with_table(q_seq, tabs, cols)
+        hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
+        num_score, tab_score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, None, tab_locations)
+        err_num, tab_err_num = model.wikisql_acc(num_score, tab_score, label, tables)
+        total_err += err_num
+        graph_err += tab_err_num
+        st = ed
+
+    print(("Dev FROM acc total acc: {} graph acc: {}".format(1 - total_err * 1.0 / len(data),
+                                                             1 - graph_err * 1.0 / len(data))), flush=True)
+    return 1 - total_err * 1.0 / len(data)
 
 
 def from_acc(model, embed_layer, data, max_batch):
