@@ -147,10 +147,10 @@ class WikiSQLNum(nn.Module):
         attentioned_tab_enc = torch.mul(tab_enc, tab_att.unsqueeze(2)).sum(1)
         SIZE_CHECK(attentioned_tab_enc, [B, 100])
         hidden0 = self.tab_hidden(attentioned_tab_enc)
-        hidden0 = hidden0.view(100, 2 * 2, 100 // 2)
+        hidden0 = hidden0.view(B, 2 * 2, 100 // 2)
         hidden0 = hidden0.transpose(0, 1).contiguous()
         cell0 = self.tab_cell(attentioned_tab_enc)
-        cell0 = cell0.view(100, 2 * 2, 100 // 2)
+        cell0 = cell0.view(B, 2 * 2, 100 // 2)
         cell0 = cell0.transpose(0, 1).contiguous()
 
         q_enc, _ = run_lstm(self.q_lstm, q_embs, q_len, (hidden0, cell0))
@@ -221,8 +221,8 @@ class FromPredictor(nn.Module):
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if self.wikisql_style:
-            # self.from_num = WikiSQLNum()
-            # self.from_cols = WikiSQLCol()
+            self.from_num = WikiSQLNum()
+            self.from_cols = WikiSQLCol()
             self.w_num = nn.Linear(self.encoded_num, 4)
         if self.onefrom:
             self.onefrom_vec = nn.Parameter(torch.zeros(N_h))
@@ -231,28 +231,43 @@ class FromPredictor(nn.Module):
 
     def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, tab_locations=None):
         B = len(q_len)
+        hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
+        hs_enc = hs_enc[:, 0, :]
 
         q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         if tab_locations:
-            tab_num_enc = self.w_num(q_enc[:, 0, :])
-
-            tab_lens = [len(x) for x in tab_locations]
-            new_q_enc = []
+            new_q_emb = []
+            new_q_len = np.zeros(B, dtype=np.int)
             for b, one_tab_locations in enumerate(tab_locations):
-                one_q_enc = []
-                for i in range(max(tab_lens)):
-                    if i < len(one_tab_locations):
-                        one_q_enc.append(q_enc[b, one_tab_locations[i]])
-                    else:
-                        padding = torch.zeros_like(q_enc[0, 0]) - 100
-                        one_q_enc.append(padding)
-                one_q_enc = torch.stack(one_q_enc)
-                new_q_enc.append(one_q_enc)
-            new_q_enc = torch.stack(new_q_enc)
-            return tab_num_enc, new_q_enc[:, :, 7]
+                new_q_len[b] = one_tab_locations[0]-1
+            max_q_len = np.max(new_q_len)
+            for b, one_tab_locations in enumerate(tab_locations):
+                one_q_enc = q_enc[b, :new_q_len[b], :100]
+                if new_q_len[b] < max_q_len:
+                    padding = torch.zeros((max_q_len - new_q_len[b]), 100).float()
+                    if torch.cuda.is_available():
+                        padding = padding.cuda()
+                    one_q_enc = torch.cat((one_q_enc, padding), dim=0)
+                new_q_emb.append(one_q_enc)
+            new_q_emb = torch.stack(new_q_emb)
 
-        hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        hs_enc = hs_enc[:, 0, :]
+            tab_emb = []
+            tab_len = np.zeros(B, dtype=np.int)
+            for b, one_tab_locations in enumerate(tab_locations):
+                tab_len[b] = len(one_tab_locations)
+            max_tab_len = np.max(tab_len)
+            for b, one_tab_locations in enumerate(tab_locations):
+                one_tab_emb = []
+                for tab_loc in one_tab_locations:
+                    one_tab_emb.append(q_enc[b, tab_loc, :100])
+                while len(one_tab_emb) < max_tab_len:
+                    padding = torch.zeros_like(q_enc[0, 0, :100])
+                    one_tab_emb.append(padding)
+                one_tab_emb = torch.stack(one_tab_emb)
+                tab_emb.append(one_tab_emb)
+            tab_emb = torch.stack(tab_emb)
+            return self.from_num(new_q_emb, new_q_len, tab_emb, tab_len), self.from_cols(new_q_emb, new_q_len, tab_emb, tab_len)
+
         if self.onefrom:
             hs_enc = self.onefrom_vec.view(1, -1).expand(B, -1)
 
