@@ -319,23 +319,34 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
     st = 0
     total_num_err = 0
     total_err = 0
+    total_ignored = 0
 
     for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
-        ed = st+batch_size if st+batch_size < len(perm) else len(perm)
-        q_seq, history, label = to_batch_seq(data, perm, st, ed)
-        hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-        tabs = []
-        cols = []
-        foreign_keys = []
-        primary_keys = []
-        for i in range(st, ed):
-            tabs.append(data[perm[i]]['ts'][0])
-            cols.append(data[perm[i]]["ts"][1])
-            foreign_keys.append(data[perm[i]]["ts"][3])
-            primary_keys.append(data[perm[i]]["ts"][4])
         if wikisql_style:
-            q_emb, q_len, q_q_len, tab_locations = embed_layer.gen_wikisql_bert_batch_with_table(q_seq, tabs, cols)
+            ed = st + batch_size if st + batch_size < len(perm) else len(perm)
+            q_seq, history, label = to_batch_seq(data, perm, st, ed)
+            tabs = []
+            cols = []
+            for i in range(st, ed):
+                tabs.append(data[perm[i]]['ts'][0])
+                cols.append(data[perm[i]]["ts"][1])
+            q_emb, q_len, q_q_len, tab_locations, ignored_idx = embed_layer.gen_wikisql_bert_batch_with_table(q_seq, tabs, cols)
+            if not q_len:
+                continue
             sep_embeddings = None
+            total_ignored += len(ignored_idx)
+
+            new_history = []
+            for i, h in enumerate(history):
+                if i not in ignored_idx:
+                    new_history.append(h)
+            new_label = []
+            for i, l in enumerate(label):
+                if i not in ignored_idx:
+                    new_label.append(l)
+            history = new_history
+            label = new_label
+            hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
             num_score, tab_score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, tab_locations)
             score = [num_score, tab_score]
             loss = model.loss(score, label)
@@ -345,6 +356,18 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             total_err += err
 
         else:
+            ed = st + batch_size if st + batch_size < len(perm) else len(perm)
+            q_seq, history, label = to_batch_seq(data, perm, st, ed)
+            hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
+            tabs = []
+            cols = []
+            foreign_keys = []
+            primary_keys = []
+            for i in range(st, ed):
+                tabs.append(data[perm[i]]['ts'][0])
+                cols.append(data[perm[i]]["ts"][1])
+                foreign_keys.append(data[perm[i]]["ts"][3])
+                primary_keys.append(data[perm[i]]["ts"][4])
             q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
             tab_locations = None
             score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, tab_locations)
@@ -365,6 +388,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
         bert_model.step()
 
         st = ed
+    print("total ignored: {}".format(total_ignored))
     print(("Train FROM {} acc total acc: {}".format(is_onefrom, 1 - total_err * 1.0 / len(data))), flush=True)
     print(("Train FROM {} num acc: {}".format(is_onefrom, 1 - total_num_err * 1.0 / len(data))), flush=True)
 
@@ -377,6 +401,7 @@ def from_acc_wikisql_style(model, embed_layer, data, batch_size):
     perm = list(range(len(data)))
     total_err = 0.0
     graph_err = 0.0
+    ignored_err = 0.0
     st = 0
     print(("dev data size {}".format(len(data))))
     table_dict = get_table_dict("./data/tables.json")
@@ -395,7 +420,10 @@ def from_acc_wikisql_style(model, embed_layer, data, batch_size):
             tabs.append(data[perm[i]]['ts'][0])
             cols.append(data[perm[i]]["ts"][1])
             tables.append(table_dict[data[perm[i]]['ts'][5]])
-        q_emb, q_len, q_q_len, tab_locations = embed_layer.gen_wikisql_bert_batch_with_table(q_seq, tabs, cols)
+        q_emb, q_len, q_q_len, tab_locations, ignored_idx = embed_layer.gen_wikisql_bert_batch_with_table(q_seq, tabs, cols)
+        ignored_err += len(q_seq) - len(q_len)
+        if not q_len:
+            continue
         hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
         num_score, tab_score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, None, tab_locations)
         err_num, tab_err_num = model.wikisql_acc(num_score, tab_score, label, tables)
@@ -403,8 +431,10 @@ def from_acc_wikisql_style(model, embed_layer, data, batch_size):
         graph_err += tab_err_num
         st = ed
 
-    print(("Dev FROM acc total acc: {} graph acc: {}".format(1 - total_err * 1.0 / len(data),
-                                                             1 - graph_err * 1.0 / len(data))), flush=True)
+    print(("Dev FROM acc total acc: {} graph acc: {} ignored_err: {}"
+           .format(1 - total_err * 1.0 / len(data),
+                   1 - graph_err * 1.0 / len(data),
+                   1 - ignored_err * 1.0 / len(data))), flush=True)
     return 1 - total_err * 1.0 / len(data)
 
 

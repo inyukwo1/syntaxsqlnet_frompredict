@@ -87,12 +87,13 @@ class WordEmbedding(nn.Module):
             input_q += " [SEP] " + table_name[tab_num]
             table_sep_nums.append(table_sep_cnt)
             table_sep_cnt += 1
-            # for col_idx, [par_tab, col_name] in enumerate(table_cols):
-            #     if par_tab == tab_num:
-            #         input_q += " [SEP] " + col_name
-            #         table_sep_cnt += 1
+            for col_idx, [par_tab, col_name] in enumerate(table_cols):
+                if par_tab == tab_num:
+                    input_q += " " + col_name
 
         tokenozed_one_q = self.bert_tokenizer.tokenize(input_q)
+        if len(tokenozed_one_q) > 512:
+            return None, None, None
         indexed_one_q = self.bert_tokenizer.convert_tokens_to_ids(tokenozed_one_q)
 
         table_indices = []
@@ -110,6 +111,7 @@ class WordEmbedding(nn.Module):
         q_len = []
         q_q_len = []
         tab_locations = []
+        ignored_idx = []
         for idx, one_q in enumerate(q):
             parent_tables = []
             for t, c in table_cols[idx]:
@@ -117,6 +119,9 @@ class WordEmbedding(nn.Module):
 
             one_q_q_len, indexed_one_q, one_tab_indices \
                 = self.encode_one_q_with_wikisql_like_bert(one_q, tables[idx], table_cols[idx])
+            if one_q_q_len is None:
+                ignored_idx.append(idx)
+                continue
             q_q_len.append(one_q_q_len)
             tokenized_q.append(indexed_one_q)
             q_len.append(len(indexed_one_q))
@@ -128,7 +133,7 @@ class WordEmbedding(nn.Module):
         tokenized_q = torch.LongTensor(tokenized_q)
         if self.gpu:
             tokenized_q = tokenized_q.cuda()
-        return tokenized_q, q_len, q_q_len, tab_locations
+        return tokenized_q, q_len, q_q_len, tab_locations, ignored_idx
 
     def encode_one_q_with_bert(self, one_q, table_name, table_cols, parent_tables, foreign_keys, primary_keys, table_graph):
         input_q = "[CLS] " + " ".join(one_q)
