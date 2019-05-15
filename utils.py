@@ -306,7 +306,7 @@ def epoch_train(gpu, model, optimizer, batch_size, component,embed_layer,data, p
     return cum_loss / len(data)
 
 
-def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data, use_tqdm, bert_model):
+def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data, use_tqdm, bert_model, sim_label):
     model.train()
     newdata = []
     for entry in data:
@@ -332,7 +332,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             cols.append(data[perm[i]]["ts"][1])
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
-        q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+        q_emb, q_len, q_q_len, label, sep_embeddings = embed_layer.gen_bert_batch_with_table(q_seq, tabs, cols, foreign_keys, primary_keys, label, sim_label)
 
         score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings)
         loss = model.loss(score, label)

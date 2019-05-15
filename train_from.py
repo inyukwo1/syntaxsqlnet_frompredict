@@ -78,11 +78,12 @@ if __name__ == '__main__':
     embed_layer = WordEmbedding(word_emb, N_word, gpu=GPU, SQL_TOK=SQL_TOK, use_bert=True)
     print("start training")
     best_acc = 0.0
+    sim_label = False
     for i in range(args.epoch):
         print(('Epoch %d @ %s'%(i+1, datetime.datetime.now())), flush=True)
         bert_model.train()
         print((' Loss = %s'% from_train(GPU,
-               model, optimizer, H_PARAM["batch_size"], args.onefrom, embed_layer, train_data, use_tqdm=args.tqdm, bert_model=bert_model)))
+               model, optimizer, H_PARAM["batch_size"], args.onefrom, embed_layer, train_data, use_tqdm=args.tqdm, bert_model=bert_model, sim_label=sim_label)))
         bert_model.eval()
         acc = from_acc(model, embed_layer, dev_data,  1)
         if acc > best_acc:
@@ -91,4 +92,5 @@ if __name__ == '__main__':
             torch.save(model.state_dict(), args.save_dir+"/from_models.dump")
             torch.save(bert_model.main_bert.state_dict(), args.save_dir+"/bert_from_models.dump")
             torch.save(bert_model.bert_param.state_dict(), args.save_dir+"/bert_from_params.dump")
-
+        if acc > 0.5:
+            sim_label = True

@@ -125,7 +125,7 @@ class WordEmbedding(nn.Module):
                 sep_embeddings_per_loc.append(-1)
         return one_q_q_len, indexed_one_q, sep_embeddings_per_loc
 
-    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys, primary_keys, labels):
+    def gen_bert_batch_with_table(self, q, tables, table_cols, foreign_keys, primary_keys, labels, sim_label):
         tokenized_q = []
 
         q_len = []
@@ -142,7 +142,11 @@ class WordEmbedding(nn.Module):
                 generated_graph = str_graph_to_num_graph(labels[idx])
             else:
                 true_graph = 0.
-                generated_graph = generate_random_graph_generate(len(tables[idx]), parent_tables, foreign_keys[idx])
+                sim_label=True
+                if sim_label:
+                    generated_graph = generate_random_graph_similar_to_label(len(tables[idx]), parent_tables, foreign_keys[idx], labels[idx])
+                else:
+                    generated_graph = generate_random_graph_generate(len(tables[idx]), parent_tables, foreign_keys[idx])
                 if graph_checker(generated_graph, labels[idx], foreign_keys[idx], primary_keys[idx]):
                     true_graph = 1.
             anses.append(true_graph)

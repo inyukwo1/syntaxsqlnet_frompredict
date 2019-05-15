@@ -107,6 +107,59 @@ def generate_four_hop_path_from_seed(start_table, par_tabs, foreign_keys):
         table_graph[start_table].pop()
 
 
+def generate_random_graph_similar_to_label(table_num, par_tabs, foreign_keys, label):
+    graph = OrderedDict()
+    for t in label:
+        graph[int(t)] = label[t]
+    appended_num = 0
+    # while random.randint(0, 100) < 70:
+    if len(label) == 1 or random.randint(0, 100) < 50:
+        if appended_num == 2:
+            return graph
+        graph = append_one_tab(par_tabs, foreign_keys, graph)
+        appended_num += 1
+    else:
+        graph = del_one_tab(par_tabs, foreign_keys, graph)
+    return graph
+
+
+def del_one_tab(par_tabs, foreign_keys, graph):
+    for i in range(100):
+        delete_tab = random.choice(list(graph.keys()))
+        if len(graph[delete_tab]) == 1:
+            break
+    if len(graph[delete_tab]) != 1:
+        return graph
+    [col] = graph[delete_tab]
+    for f, p in foreign_keys:
+        if col == f and par_tabs[p] in graph and p in graph[par_tabs[p]]:
+            graph.pop(delete_tab)
+            graph[par_tabs[p]].remove(p)
+            break
+        elif col == p and par_tabs[f] in graph and f in graph[par_tabs[f]]:
+            graph.pop(delete_tab)
+            graph[par_tabs[f]].remove(f)
+            break
+    return graph
+
+
+def append_one_tab(par_tabs, foreign_keys, graph):
+    if len(graph) == max(par_tabs):
+        return graph
+    for i in range(0, 100):
+        add_tab = random.choice(range(max(par_tabs)))
+        if add_tab in graph:
+            continue
+        for f, p in foreign_keys:
+            if par_tabs[f] == add_tab and par_tabs[p] in graph:
+                graph[add_tab] = [f]
+                graph[par_tabs[p]].append(p)
+                return graph
+            elif par_tabs[p] == add_tab and par_tabs[f] in graph:
+                graph[add_tab] = [p]
+                graph[par_tabs[f]].append(f)
+                return graph
+    return graph
 
 
 
