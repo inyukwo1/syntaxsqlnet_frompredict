@@ -90,5 +90,5 @@ if __name__ == '__main__':
             print("Save model...")
             torch.save(model.state_dict(), args.save_dir+"/from_models.dump")
             torch.save(bert_model.main_bert.state_dict(), args.save_dir+"/bert_from_models.dump")
-            torch.save(bert_model.bert_param.state_dict(), args.save_dir+"/bert_from_params.dump")
+            # torch.save(bert_model.bert_param.state_dict(), args.save_dir+"/bert_from_params.dump")
 

@@ -6,14 +6,14 @@ import json
 import sys
 from collections import defaultdict
 
-train_dev = "train"
+train_dev = "dev"
 if len(sys.argv) > 1:
     train_dev = sys.argv[1]
 ###TODO: change dirs
 if train_dev == "train":
     data_path = "./data/train_all_augmented_filtered.json"
 else:
-    data_path = "./data/dev.json"
+    data_path = "./data/dev_filtered.json"
 table_data_path = "./data/all_tables.json"
 train_data = json.load(open(data_path))
 history_option = "full"
@@ -733,7 +733,7 @@ def parse_data(data):
         "onefrom_dataset": []
     }
     table_dict = get_table_dict(table_data_path)
-    for item in data:
+    for idx, item in enumerate(data):
         parser_item_one_from(item["question_toks"], item["query_toks"], item["sql"], table_dict[item["db_id"]], dataset)
 
     for item in data:
