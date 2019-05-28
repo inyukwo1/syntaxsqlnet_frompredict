@@ -114,8 +114,10 @@ class FromPredictor(nn.Module):
             self.main_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                                      num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
-            self.q_att = nn.Sequential(nn.Linear(N_h, N_h), nn.ReLU())
-            self.q_out = nn.Sequential(nn.Linear(N_h, N_h), nn.Tanh())
+            self.q_att = nn.Linear(N_h, N_h)
+            self.hs_att= nn.Linear(N_h, N_h)
+            self.q_out = nn.Linear(N_h, N_h)
+            self.hs_out = nn.Linear(N_h, N_h)
             self.table_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                                      num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
@@ -124,56 +126,32 @@ class FromPredictor(nn.Module):
                                      num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
             self.encoded_num = N_h
-            self.q_score_out = nn.Sequential(nn.Linear(N_h, 1))
+            self.q_score_out = nn.Sequential(nn.Tanh(), nn.Linear(N_h, 1))
 
         self.outer1 = nn.Sequential(nn.Linear(N_h + self.encoded_num, N_h), nn.ReLU())
         self.outer2 = nn.Sequential(nn.Linear(N_h, 1))
         if gpu:
             self.cuda()
 
-    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb=None, join_num=None, table_len=None, table_name_len=None):
+    def forward(self, q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb=None, table_len=None, table_name_len=None):
         B = len(q_len)
         hs_enc, _ = run_lstm(self.hs_lstm, hs_emb_var, hs_len)
-        hs_enc = hs_enc[:, 0, :]
         if self.use_lstm:
             table_len = np.array(table_len)
             q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
             t_enc, _ = col_tab_name_encode(table_emb, table_name_len, table_len, self.table_lstm)
-            t_enc, _ = run_lstm(self.table_onemore_lstm, t_enc, table_len)
-            SIZE_CHECK(t_enc, [len(table_len), max(table_len), -1])
-            q_att = self.q_att(q_enc)
-            SIZE_CHECK(q_enc, [B, max(q_len), -1])
-            q_att = q_att.transpose(1, 2)
-            table_idx = 0
-            attended_qs = []
-
-            for b in range(B):
-                one_attended_qs = []
-                for b_t in range(max(join_num)):
-                    if b_t >= join_num[b]:
-                        one_attended_qs.append(torch.zeros_like(q_enc[0, 0, :]))
-                        continue
-                    co_att = torch.mm(t_enc[table_idx], q_att[b])
-                    if q_len[b] < max(q_len):
-                        co_att[:, q_len[b]:] = -100
-                    if table_len[table_idx] < max(table_len):
-                        co_att[table_len[table_idx]:, :] = -100
-                    softmaxed_att = F.softmax(co_att, dim=1)
-                    attended_one_q = (q_att[b].unsqueeze(0).transpose(1, 2) * softmaxed_att.unsqueeze(2)).sum(0).sum(0)
-                    one_attended_qs.append(attended_one_q)
-                    table_idx += 1
-                one_attended_qs = torch.stack(one_attended_qs)
-                attended_qs.append(one_attended_qs)
-            attended_qs = torch.stack(attended_qs)
-            SIZE_CHECK(attended_qs, [B, max(join_num), -1])
-            attended_qs = self.q_out(attended_qs).sum(1)
-
-            x = self.q_score_out(attended_qs).squeeze(1)
+            q_weighted_ox = seq_conditional_weighted_num(self.q_att, q_enc, q_len, t_enc, table_len).sum(1)
+            if self.onefrom:
+                hs_enc = self.onefrom_vec.view(1, -1).expand(B, -1)
+            hs_weighted_ox = seq_conditional_weighted_num(self.hs_att, hs_enc, hs_len, t_enc, table_len).sum(1)
+            ox_score = self.q_score_out(self.q_out(q_weighted_ox) + self.hs_out(hs_weighted_ox))
+            x = ox_score.squeeze(1)
             return x
         else:
             q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         if self.onefrom:
             hs_enc = self.onefrom_vec.view(1, -1).expand(B,  -1)
+            hs_enc = hs_enc[:, 0, :]
 
         q_enc = q_enc[:, 0, :]
         q_enc = torch.cat((q_enc, hs_enc), dim=1)
