@@ -67,7 +67,6 @@ class WordEmbedding(nn.Module):
         B = len(q)
         val_embs = []
         table_embs = []
-        join_num = []
         table_embs_len = []
         val_len = np.zeros(B, dtype=np.int64)
         anses = []
@@ -90,7 +89,6 @@ class WordEmbedding(nn.Module):
             for ws in one_q:
                 q_val.append(self.word_find(ws))
 
-
             col_name_dict = {}
             for table_num in generated_graph:
                 col_name_dict[table_num] = []
@@ -109,41 +107,13 @@ class WordEmbedding(nn.Module):
                     else:
                         col_name_dict[par_tab].append(col_name)
 
-            # one_batch_table_embs = []
-            # one_batch_table_len = []
-            # for table_num in generated_graph:
-            #     one_table_embs = [np.zeros(self.N_word, dtype=np.float32)] + [self.word_find(x) for x in table_name[table_num]]
-            #     col_names = col_name_dict[table_num]
-            #     for col_name in col_names:
-            #         one_table_embs += [self.sep_embedding] + [self.word_find(x) for x in col_name]
-            #     one_table_embs += [np.zeros(self.N_word, dtype=np.float32)]
-            #     one_batch_table_embs.append(one_table_embs)
-            #     one_batch_table_len.append(len(one_table_embs))
-            # table_embs.append(one_batch_table_embs)
-            # table_embs_len.append(one_batch_table_len)
-
-            # one_table_embs = []
-            # for table_num in generated_graph:
-            #     one_table_embs += [self.sep_embedding] + [self.word_find(x) for x in table_name[table_num]]
-            # for table_num in generated_graph:
-            #     col_names = col_name_dict[table_num]
-            #     for col_name in col_names:
-            #         one_table_embs += [self.sep_embedding] + [self.word_find(x) for x in col_name]
-            # one_table_embs += [np.zeros(self.N_word, dtype=np.float32)]
-            #
-            # table_embs.append(one_table_embs)
-            # table_embs_len[idx] = len(one_table_embs)
-
-            join_num.append(len(generated_graph))
+            table_embs_len.append(len(generated_graph))
             for table_num in generated_graph:
-                cols_seq = []
                 col_names = col_name_dict[table_num]
+                one_tab_seq = table_name[table_num].split(" ")
                 for col_name in col_names:
-                    one_col_seq = table_name[table_num].split(" ")
-                    one_col_seq += col_name.split(" ")
-                    cols_seq.append(one_col_seq)
-                table_embs_len.append(len(cols_seq))
-                table_embs += cols_seq
+                    one_tab_seq += col_name.split(" ")
+                table_embs.append(one_tab_seq)
 
             val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [
                 np.zeros(self.N_word, dtype=np.float32)])  # <BEG> and <END>
@@ -163,7 +133,7 @@ class WordEmbedding(nn.Module):
             anses = anses.cuda()
         val_inp_var = Variable(val_inp)
 
-        return val_inp_var, val_len, table_embs_var, join_num, table_name_len, table_embs_len, anses
+        return val_inp_var, val_len, table_embs_var, table_name_len, table_embs_len, anses
 
     def gen_joingraph_eval_nobert(self, one_q, one_tables, one_cols, foreign_keys, primary_keys):
         parent_nums = []
@@ -183,7 +153,6 @@ class WordEmbedding(nn.Module):
         B = len(table_graph_lists)
         val_embs = []
         table_embs = []
-        join_num = []
         table_embs_len = []
         val_len = np.zeros(B, dtype=np.int64)
         for b in range(B):
@@ -209,42 +178,13 @@ class WordEmbedding(nn.Module):
                     else:
                         col_name_dict[par_tab].append(col_name)
 
-            # one_batch_table_embs = []
-            # one_batch_table_len = []
-            # for table_num in generated_graph:
-            #     one_table_embs = [np.zeros(self.N_word, dtype=np.float32)] + [self.word_find(x) for x in
-            #                                                                   one_tables[table_num]]
-            #     col_names = col_name_dict[table_num]
-            #     for col_name in col_names:
-            #         one_table_embs += [self.sep_embedding] + [self.word_find(x) for x in col_name]
-            #     one_table_embs += [np.zeros(self.N_word, dtype=np.float32)]
-            #     one_batch_table_embs.append(one_table_embs)
-            #     one_batch_table_len.append(len(one_table_embs))
-            # table_embs.append(one_batch_table_embs)
-            # table_embs_len.append(one_batch_table_len)
-
-            # one_table_embs = []
-            # for table_num in generated_graph:
-            #     one_table_embs += [self.sep_embedding] + [self.word_find(x) for x in one_tables[table_num]]
-            #
-            # for table_num in generated_graph:
-            #     col_names = col_name_dict[table_num]
-            #     for col_name in col_names:
-            #         one_table_embs += [self.sep_embedding] + [self.word_find(x) for x in col_name]
-            # one_table_embs += [np.zeros(self.N_word, dtype=np.float32)]
-            # table_embs.append(one_table_embs)
-            # table_embs_len[b] = len(one_table_embs)
-
-            join_num.append(len(generated_graph))
+            table_embs_len.append(len(generated_graph))
             for table_num in generated_graph:
-                cols_seq = []
                 col_names = col_name_dict[table_num]
+                one_tab_seq = one_tables[table_num].split(" ")
                 for col_name in col_names:
-                    one_col_seq = one_tables[table_num].split(" ")
-                    one_col_seq += col_name.split(" ")
-                    cols_seq.append(one_col_seq)
-                table_embs_len.append(len(cols_seq))
-                table_embs += cols_seq
+                    one_tab_seq += col_name.split(" ")
+                table_embs.append(one_tab_seq)
 
             val_embs.append([np.zeros(self.N_word, dtype=np.float32)] + q_val + [np.zeros(self.N_word, dtype=np.float32)])  # <BEG> and <END>
             val_len[b] = 1 + len(q_val) + 1
@@ -259,7 +199,7 @@ class WordEmbedding(nn.Module):
         if self.gpu:
             val_inp = val_inp.cuda()
         val_inp_var = Variable(val_inp)
-        return val_inp_var, val_len, table_embs_var, join_num, table_name_len, table_embs_len, simple_graph_lists, table_graph_lists
+        return val_inp_var, val_len, table_embs_var, table_name_len, table_embs_len, simple_graph_lists, table_graph_lists
 
 
     def gen_x_q_bert_batch(self, q):
