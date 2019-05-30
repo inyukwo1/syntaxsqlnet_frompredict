@@ -118,6 +118,7 @@ class FromPredictor(nn.Module):
             self.hs_att= nn.Linear(N_h, N_h)
             self.q_out = nn.Linear(N_h, N_h)
             self.hs_out = nn.Linear(N_h, N_h)
+            self.tab_out = nn.Linear(N_h, N_h)
             self.table_lstm = nn.LSTM(input_size=N_word, hidden_size=N_h//2,
                                      num_layers=N_depth, batch_first=True,
                                      dropout=0.3, bidirectional=True)
@@ -140,13 +141,15 @@ class FromPredictor(nn.Module):
             table_len = np.array(table_len)
             q_enc, _ = run_lstm(self.main_lstm, q_emb, q_len)
             t_enc, _ = col_tab_name_encode(table_emb, table_name_len, table_len, self.table_lstm)
-            q_weighted_ox = seq_conditional_weighted_num(self.q_att, q_enc, q_len, t_enc, table_len).sum(1)
+            q_weighted_ox = seq_conditional_weighted_num(self.q_att, q_enc, q_len, t_enc, table_len)
             if self.onefrom:
                 hs_enc = self.onefrom_vec.view(1, -1).expand(B, -1)
-            hs_weighted_ox = seq_conditional_weighted_num(self.hs_att, hs_enc, hs_len, t_enc, table_len).sum(1)
-            ox_score = self.q_score_out(self.q_out(q_weighted_ox) + self.hs_out(hs_weighted_ox))
-            x = ox_score.squeeze(1)
-            return x
+            hs_weighted_ox = seq_conditional_weighted_num(self.hs_att, hs_enc, hs_len, t_enc, table_len)
+            tab_score = self.q_score_out(self.q_out(q_weighted_ox) + self.hs_out(hs_weighted_ox) + self.tab_out(t_enc)).view(B, -1)
+            for idx, num in enumerate(table_len):
+                if num < max(table_len):
+                    tab_score[idx, num:] = -100
+            return torch.sigmoid(tab_score)
         else:
             q_enc = self.q_bert(q_emb, q_len, q_q_len, sep_embeddings)
         if self.onefrom:
@@ -160,25 +163,53 @@ class FromPredictor(nn.Module):
         return x
 
     def loss(self, score, labels):
-        loss = F.binary_cross_entropy_with_logits(score, labels)
+        torch_label = torch.zeros_like(score)
+        B, T = list(score.size())
+        for b in range(B):
+            for t in range(T):
+                if str(t) in labels[b]:
+                    torch_label[b, t] = 1.
+        loss = F.binary_cross_entropy(score, torch_label)
         return loss
 
     def check_acc(self, score, truth):
         err = 0
+        exact_err = 0
+        fifth_err = 0
+        seventh_err = 0
         B = len(truth)
         pred = []
         if self.gpu:
             score = torch.tanh(score).data.cpu().numpy()
-            truth = truth.cpu().numpy()
         else:
             score = F.tanh(score).data.numpy()
-            truth = truth.numpy()
         for b in range(B):
-            if score[b] > 0. and truth[b] < 0.5:
+            wrong = False
+            exact_wrong = False
+            fifth_wrong = False
+            seventh_wrong = False
+
+            for t, t_score in enumerate(score[b]):
+                if t_score > 0.5 and str(t) not in truth[b]:
+                    exact_wrong = True
+                if t_score < 0.5 and str(t) in truth[b]:
+                    exact_wrong = True
+                    wrong = True
+            if wrong:
                 err += 1
-            elif score[b]<= 0. and truth[b] > 0.5:
-                err += 1
-        return np.array(err)
+            if exact_wrong:
+                exact_err += 1
+            top_tables = np.argsort(-score[b])
+            for t in truth[b]:
+                if int(t) not in top_tables[:5]:
+                    fifth_wrong = True
+                if int(t) not in top_tables[:7]:
+                    seventh_wrong = True
+            if fifth_wrong:
+                fifth_err += 1
+            if seventh_wrong:
+                seventh_err += 1
+        return err, exact_err, fifth_err, seventh_err
 
     def check_eval_acc(self, score, table_graph_list, graph, foreign_keys, primary_keys, parent_tables, table_names, column_names, question):
         table_num_ed = len(table_names)
@@ -225,4 +256,5 @@ class FromPredictor(nn.Module):
         tabs = new_tabs
         predict_graph = sql_graph_maker(tabs, foreign_keys, parent_tables)
         return list(predict_graph.keys()), predict_graph
+
 

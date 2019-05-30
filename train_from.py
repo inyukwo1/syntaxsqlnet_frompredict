@@ -36,8 +36,7 @@ if __name__ == '__main__':
             help='If set, use tqdm.')
     parser.add_argument('--onefrom', action='store_true')
     parser.add_argument('--use_lstm', action="store_true")
-    parser.add_argument('--save_dir', type=str, default='',
-            help='set model save directory.')
+
     parser.add_argument('--data_root', type=str, default='',
             help='root path for generated_data')
     parser.add_argument('--epoch',type=int,default=500,

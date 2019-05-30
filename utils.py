@@ -304,6 +304,9 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
     cum_loss = 0.0
     st = 0
     total_err = 0
+    total_exact_err = 0
+    total_fifth_err = 0
+    total_seventh_err = 0
 
     for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
         ed = st+batch_size if st+batch_size < len(perm) else len(perm)
@@ -319,7 +322,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
         if use_lstm:
-            q_emb, q_len, table_emb, table_name_len, table_len, label = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols, foreign_keys, primary_keys, label)
+            q_emb, q_len, table_emb, table_name_len, table_len = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols)
             q_q_len = None
             sep_embeddings = None
         else:
@@ -331,8 +334,11 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
         score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len, table_name_len)
         loss = model.loss(score, label)
 
-        err = model.check_acc(score, label)
+        err, exact_err, fifth_err, seventh_err = model.check_acc(score, label)
         total_err += err
+        total_exact_err += exact_err
+        total_fifth_err += fifth_err
+        total_seventh_err += seventh_err
 
         # print("loss {}".format(loss.data.cpu().numpy()))
         if gpu:
@@ -346,71 +352,61 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
         bert_model.step()
 
         st = ed
-    print(("Train FROM {} acc total acc: {}".format(is_onefrom, 1 - total_err * 1.0 / len(data))), flush=True)
+    print(("Train FROM acc {} exact acc: {} fifth acc: {} seventh acc: {}"
+           .format(1 - total_err / len(data),
+                   1 - total_exact_err / len(data),
+                   1 - total_fifth_err / len(data),
+                   1 - total_seventh_err / len(data))), flush=True)
 
     return cum_loss / len(data)
 
 
 def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
     model.eval()
-    total_err = 0.0
-    graph_err = 0.0
+    total_err = 0
+    total_exact_err = 0
+    total_fifth_err = 0
+    total_seventh_err = 0
     print(("dev data size {}".format(len(data))))
     table_dict = get_table_dict("./data/tables.json")
     dev_db_ids = set()
     for datum in data:
         dev_db_ids.add(datum["ts"][5])
 
-    for datum in tqdm.tqdm(data):
-        # This part is for a from prediction
-        db_id = datum["ts"][5]
-        compound_table = make_compound_table(table_dict, db_id, list(dev_db_ids))
-        one_history = datum["history"] # For typesql and sqlnet, just give ["none"]
-        one_q_seq = datum['question_tokens']
-        one_tab_names = compound_table["table_names"]
-        one_cols = compound_table["column_names"]
-        foreign_keys = compound_table["foreign_keys"]
-        primary_keys = compound_table["primary_keys"]
-        one_label = datum["label"]
-        parent_tables = []
-        for par_tab, _ in compound_table["column_names"]:
-            parent_tables.append(par_tab)
+    cum_loss = 0.0
+    st = 0
+
+    for _ in tqdm.tqdm(range(len(data) // max_batch)):
+        ed = st+max_batch if st+max_batch < len(data) else len(data)
+        q_seq, history, label = to_batch_seq(data, range(len(data)), st, ed)
+        hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
+        tabs = []
+        cols = []
+        for i in range(st, ed):
+            tabs.append(data[i]['ts'][0])
+            cols.append(data[i]["ts"][1])
         if use_lstm:
-            q_emb, q_len, table_emb, table_name_len, table_len, table_graph_list, full_graph_list = embed_layer.gen_joingraph_eval_nobert(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
-            q_q_len = [0] * len(q_emb)
-            sep_embeddings = [0] * len(q_emb)
+            q_emb, q_len, table_emb, table_name_len, table_len = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols)
+            q_q_len = None
+            sep_embeddings = None
         else:
-            q_emb, q_len, q_q_len, table_graph_list, full_graph_list, sep_embeddings = embed_layer.gen_bert_for_eval(one_q_seq, one_tab_names, one_cols, foreign_keys, primary_keys)
-            table_emb = [0] * len(q_emb)
-            table_name_len = [0] * len(q_emb)
-            table_len = [0] * len(q_emb)
-            join_num = [0] * len(q_emb)
+            raise AssertionError
+        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len,
+                              table_name_len)
+        loss = model.loss(score, label)
 
-        st = 0
-        tab_st = 0
-        b = len(q_emb)
-        scores = []
-        while st < b:
-            ed = st + max_batch
-            if ed >= b:
-                ed = b
-            tab_ed = tab_st
-            for i in range(st, ed, 1):
-                tab_ed += table_len[i]
-            history = [one_history] * (ed - st)
-            hs_emb_var, hs_len = embed_layer.gen_x_history_batch(history)
-            score = model.forward(q_emb[st:ed], q_len[st:ed], q_q_len[st:ed], hs_emb_var, hs_len, sep_embeddings[st:ed], table_emb[tab_st:tab_ed], table_len[st:ed], table_name_len[tab_st:tab_ed])
-            score = score.data.cpu().numpy()
-            scores.append(score)
-            st = ed
-            tab_st = tab_ed
-        scores = np.concatenate(scores)
+        err, exact_err, fifth_err, seventh_err = model.check_acc(score, label)
+        total_err += err
+        total_exact_err += exact_err
+        total_fifth_err += fifth_err
+        total_seventh_err += seventh_err
+        st = ed
 
-        correct = model.check_eval_acc(scores, table_graph_list, one_label, foreign_keys, primary_keys, parent_tables, one_tab_names, one_cols, datum["question_tokens"])
-        if not correct:
-            total_err += 1.
-
-    print(("Dev FROM acc total acc: {} graph acc: {}".format(1 - total_err * 1.0 / len(data), 1 - graph_err * 1.0 / len(data))), flush=True)
+    print(("Dev FROM acc: {} exact acc: {} fifth acc: {} seventh acc: {}"
+           .format(1 - total_err / len(data),
+                   1 - total_exact_err / len(data),
+                   1 - total_fifth_err / len(data),
+                   1 - total_seventh_err / len(data))), flush=True)
     return 1 - total_err * 1.0 / len(data)
 
 
