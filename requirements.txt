@@ -21,3 +21,6 @@ pytorch-pretrained-bert
 tqdm
 sqlparse
 dgl
+allennlp
+torch-geometric
+ordered_set

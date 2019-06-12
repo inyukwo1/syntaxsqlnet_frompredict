@@ -394,8 +394,11 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
         score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len,
                               table_name_len)
         loss = model.loss(score, label)
+        tables = []
+        for batch_data in data[st:ed]:
+            tables.append(batch_data["ts"][0])
 
-        err, exact_err, fifth_err, seventh_err = model.check_acc(score, label)
+        err, exact_err, fifth_err, seventh_err = model.check_acc_eval(score, label, q_seq, tables)
         total_err += err
         total_exact_err += exact_err
         total_fifth_err += fifth_err

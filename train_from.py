@@ -36,6 +36,8 @@ if __name__ == '__main__':
             help='If set, use tqdm.')
     parser.add_argument('--onefrom', action='store_true')
     parser.add_argument('--use_lstm', action="store_true")
+    parser.add_argument('--save_dir', type=str, default='',
+            help='set model save directory.')
 
     parser.add_argument('--data_root', type=str, default='',
             help='root path for generated_data')
@@ -59,9 +61,11 @@ if __name__ == '__main__':
     learning_rate = H_PARAM["learning_rate"]
     bert_learning_rate = H_PARAM["bert_learning_rate"]
 
+
     train_component = "from"
     if args.onefrom:
         train_component = "onefrom"
+    train_component = "pure_tables"
     train_data = load_train_dev_dataset(train_component, "train", "full", args.data_root)
     dev_data = load_train_dev_dataset(train_component, "dev", "full", args.data_root)
     prepared_tables = prepare_tables(train_data, "std")

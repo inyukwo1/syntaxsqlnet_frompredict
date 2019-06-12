@@ -6,7 +6,7 @@ import json
 import sys
 from collections import defaultdict
 
-train_dev = "train"
+train_dev = "dev"
 if len(sys.argv) > 1:
     train_dev = sys.argv[1]
 ###TODO: change dirs
@@ -253,6 +253,103 @@ class AndOrPredictor:
         if 'where' in self.sql and self.sql['where'] and len(self.sql['where']) > 1:
             return self.history,COND_OPS[self.sql['where'][1]]
         return self.history,-1
+
+
+def parser_item_all_tables(question_tokens, query_tokens, sql, table, dataset):
+    table_schema = [
+        table["table_names"],
+        table["column_names"],
+        table["column_types"],
+        table["foreign_keys"],
+        table["primary_keys"],
+        table["db_id"]
+    ]
+
+    def find_all_table_nums(sql):
+        if isinstance(sql, list):
+            for item in sql:
+                yield from find_all_table_nums(item)
+        if isinstance(sql, dict):
+            for keyword in sql:
+                if keyword == "table_units":
+                    for _, table_num in sql["table_units"]:
+                        if not isinstance(table_num, int):
+                            yield from find_all_table_nums(table_num)
+                        else:
+                            yield table_num
+                else:
+                    yield from find_all_table_nums(sql[keyword])
+
+    def find_pure_table_nums(sql):
+        def check_for_col_unit(col_unit):
+            if not col_unit:
+                return False
+            agg_id, col_id, isDistinct = col_unit
+            if col_id == 0 or table["column_names"][col_id][0] == table_num:
+                return True
+            return False
+
+        def check_for_val_unit(val_unit):
+            unit_op, col_unit1, col_unit2 = val_unit
+            return check_for_col_unit(col_unit1) or check_for_col_unit(col_unit2)
+
+        if not sql:
+            return
+        for _, table_num in sql["from"]["table_units"]:
+            if isinstance(table_num, dict):
+                yield from find_pure_table_nums(table_num)
+                continue
+            used_table = False
+            for val_unit in sql["select"][1]:
+                agg_id, val_unit = val_unit
+                if check_for_val_unit(val_unit):
+                    used_table = True
+            for cond in sql["where"]:
+                if isinstance(cond, str):
+                    continue
+                not_op, op_id, val_unit, val1, val2 = cond
+                if check_for_val_unit(val_unit):
+                    used_table = True
+                if isinstance(val1, dict):
+                    yield from find_pure_table_nums(val1)
+            for col_unit in sql["groupBy"]:
+                if check_for_col_unit(col_unit):
+                    used_table = True
+            for cond in sql["having"]:
+                if isinstance(cond, str):
+                    continue
+                not_op, op_id, val_unit, val1, val2 = cond
+                if check_for_val_unit(val_unit):
+                    used_table = True
+                if isinstance(val1, dict):
+                    yield from find_pure_table_nums(val1)
+            if sql["orderBy"]:
+                for val_unit in sql["orderBy"][1]:
+                    if check_for_val_unit(val_unit):
+                        used_table = True
+            if used_table:
+                yield table_num
+
+        yield from find_pure_table_nums(sql["except"])
+        yield from find_pure_table_nums(sql["intersect"])
+        yield from find_pure_table_nums(sql["union"])
+
+    table_list = list(set(find_all_table_nums(sql)))
+    dataset['all_tables_dataset'].append({
+        "question_tokens": question_tokens,
+        "ts": table_schema,
+        "history": ["none"],
+        "label": table_list
+    })
+    table_list = list(set(find_pure_table_nums(sql)))
+    if not table_list:
+        print(sql)
+    dataset['pure_tables_dataset'].append({
+        "question_tokens": question_tokens,
+        "ts": table_schema,
+        "history": ["none"],
+        "label": table_list
+    })
 
 
 def parser_item_one_from(question_tokens, query_tokens, sql, table, dataset):
@@ -730,11 +827,14 @@ def parse_data(data):
         "having_dataset": [],
         "andor_dataset":[],
         "from_dataset":[],
-        "onefrom_dataset": []
+        "onefrom_dataset": [],
+        "all_tables_dataset": [],
+        "pure_tables_dataset": []
     }
     table_dict = get_table_dict(table_data_path)
     for item in data:
         parser_item_one_from(item["question_toks"], item["query_toks"], item["sql"], table_dict[item["db_id"]], dataset)
+        parser_item_all_tables(item["question_toks"], item["query_toks"], item["sql"], table_dict[item["db_id"]], dataset)
 
     for item in data:
         if history_option == "full":

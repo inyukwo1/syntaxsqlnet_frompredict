@@ -4,7 +4,7 @@
  hs=full
  tbl=std
  d_type="_augment_from"
- log_name="table_col_lstm_generator"
+ log_name="table_col_lstm_generator_pure"
 
 
 DATE=`date '+%Y-%m-%d-%H:%M:%S'`
