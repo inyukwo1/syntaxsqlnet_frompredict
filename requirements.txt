@@ -24,3 +24,4 @@ dgl
 allennlp
 torch-geometric
 ordered_set
+pytorch-nlp

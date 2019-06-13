@@ -303,10 +303,9 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
     perm=np.random.permutation(len(data))
     cum_loss = 0.0
     st = 0
-    total_err = 0
     total_exact_err = 0
-    total_fifth_err = 0
-    total_seventh_err = 0
+    total_over_err = 0
+    total_less_err = 0
 
     for _ in tqdm.tqdm(range(len(data) // batch_size), disable=not use_tqdm):
         ed = st+batch_size if st+batch_size < len(perm) else len(perm)
@@ -322,7 +321,7 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             foreign_keys.append(data[perm[i]]["ts"][3])
             primary_keys.append(data[perm[i]]["ts"][4])
         if use_lstm:
-            q_emb, q_len, table_emb, table_name_len, table_len = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols)
+            q_emb, q_len, table_emb, table_name_len, table_len, col_embs_var, col_name_len, col_tab_len = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols)
             q_q_len = None
             sep_embeddings = None
         else:
@@ -331,14 +330,14 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
             table_name_len = None
             table_emb = None
 
-        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len, table_name_len)
+        score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len, table_name_len,
+                              col_embs_var, col_name_len, col_tab_len)
         loss = model.loss(score, label)
 
-        err, exact_err, fifth_err, seventh_err = model.check_acc(score, label)
-        total_err += err
+        exact_err, over_err, less_err = model.check_acc(score, label)
         total_exact_err += exact_err
-        total_fifth_err += fifth_err
-        total_seventh_err += seventh_err
+        total_over_err += over_err
+        total_less_err += less_err
 
         # print("loss {}".format(loss.data.cpu().numpy()))
         if gpu:
@@ -352,21 +351,19 @@ def from_train(gpu, model, optimizer, batch_size, is_onefrom, embed_layer, data,
         bert_model.step()
 
         st = ed
-    print(("Train FROM acc {} exact acc: {} fifth acc: {} seventh acc: {}"
-           .format(1 - total_err / len(data),
-                   1 - total_exact_err / len(data),
-                   1 - total_fifth_err / len(data),
-                   1 - total_seventh_err / len(data))), flush=True)
+    print(("Train FROM exact acc: {} over acc: {} less acc: {}"
+           .format(1 - total_exact_err / len(data),
+                   1 - total_over_err / len(data),
+                   1 - total_less_err / len(data))), flush=True)
 
     return cum_loss / len(data)
 
 
 def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
     model.eval()
-    total_err = 0
     total_exact_err = 0
-    total_fifth_err = 0
-    total_seventh_err = 0
+    total_over_err = 0
+    total_less_err = 0
     print(("dev data size {}".format(len(data))))
     table_dict = get_table_dict("./data/tables.json")
     dev_db_ids = set()
@@ -386,31 +383,30 @@ def from_acc(model, embed_layer, data, max_batch, use_lstm=False):
             tabs.append(data[i]['ts'][0])
             cols.append(data[i]["ts"][1])
         if use_lstm:
-            q_emb, q_len, table_emb, table_name_len, table_len = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols)
+            q_emb, q_len, table_emb, table_name_len, table_len, col_embs_var, col_name_len, col_tab_len = embed_layer.gen_joingraph_encoding_nobert(q_seq, tabs, cols)
             q_q_len = None
             sep_embeddings = None
         else:
             raise AssertionError
         score = model.forward(q_emb, q_len, q_q_len, hs_emb_var, hs_len, sep_embeddings, table_emb, table_len,
-                              table_name_len)
+                              table_name_len, col_embs_var, col_name_len, col_tab_len)
         loss = model.loss(score, label)
         tables = []
         for batch_data in data[st:ed]:
             tables.append(batch_data["ts"][0])
 
-        err, exact_err, fifth_err, seventh_err = model.check_acc_eval(score, label, q_seq, tables)
-        total_err += err
+        exact_err, over_err, less_err = model.check_acc_eval(score, label, q_seq, tables)
         total_exact_err += exact_err
-        total_fifth_err += fifth_err
-        total_seventh_err += seventh_err
+        total_over_err += over_err
+        total_less_err += less_err
+
         st = ed
 
-    print(("Dev FROM acc: {} exact acc: {} fifth acc: {} seventh acc: {}"
-           .format(1 - total_err / len(data),
-                   1 - total_exact_err / len(data),
-                   1 - total_fifth_err / len(data),
-                   1 - total_seventh_err / len(data))), flush=True)
-    return 1 - total_err * 1.0 / len(data)
+    print(("Dev FROM exact acc: {} over acc: {} less acc: {}"
+           .format(1 - total_exact_err / len(data),
+                   1 - total_over_err / len(data),
+                   1 - total_less_err / len(data))), flush=True)
+    return 1 - total_exact_err * 1.0 / len(data)
 
 
 ## used for development evaluation in train_spider.py

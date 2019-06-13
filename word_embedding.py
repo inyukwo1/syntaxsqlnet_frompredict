@@ -68,15 +68,21 @@ class WordEmbedding(nn.Module):
         val_embs = []
         table_embs = []
         table_embs_len = []
+        col_embs = []
+        col_tab_len = []
         val_len = np.zeros(B, dtype=np.int64)
         for idx, one_q in enumerate(q):
             table_names = tables[idx]
             table_embs_len.append(len(table_names))
             for tab_num, table_name in enumerate(table_names):
                 one_tab_seq = table_name.split(" ")
+                col_num_per_tab = 0
                 for t, c in table_cols[idx]:
                     if t == tab_num:
                         one_tab_seq += c.split(" ")
+                        col_embs.append(c.split(" "))
+                        col_num_per_tab += 1
+                col_tab_len.append(col_num_per_tab)
                 table_embs.append(one_tab_seq)
 
             q_val = []
@@ -88,6 +94,7 @@ class WordEmbedding(nn.Module):
             val_len[idx] = 1 + len(q_val) + 1
 
         table_embs_var, table_name_len = self.str_list_to_batch(table_embs)
+        col_embs_var, col_name_len = self.str_list_to_batch(col_embs)
 
         max_val_len = max(val_len)
         val_emb_array = np.zeros((B, max_val_len, self.N_word), dtype=np.float32)
@@ -99,7 +106,7 @@ class WordEmbedding(nn.Module):
             val_inp = val_inp.cuda()
         val_inp_var = Variable(val_inp)
 
-        return val_inp_var, val_len, table_embs_var, table_name_len, table_embs_len
+        return val_inp_var, val_len, table_embs_var, table_name_len, table_embs_len, col_embs_var, col_name_len, col_tab_len
 
     def gen_x_q_bert_batch(self, q):
         tokenized_q = []
